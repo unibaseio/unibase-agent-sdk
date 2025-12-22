@@ -10,8 +10,8 @@ from ..utils.logger import get_logger
 import httpx
 
 # Import AIP SDK for agent registration and platform communication
-from aip.sdk import AsyncAIPClient, AgentConfig as AIPAgentConfig, SkillConfig
-from aip.sdk.exceptions import AIPError, RegistrationError as AIPRegistrationError
+from aip_sdk import AsyncAIPClient, AgentConfig as AIPAgentConfig, SkillConfig
+from aip_sdk.exceptions import AIPError, RegistrationError as AIPRegistrationError
 
 logger = get_logger("registry.registry")
 
@@ -58,13 +58,13 @@ class AgentRegistry:
         self._agents: Dict[str, TransparentAgentProxy] = {}
         self._identities: Dict[str, AgentIdentity] = {}
 
-        # AIP SDK Client (required)
+        # AIP SDK Client (required for all platform communication)
         self._aip_client = AsyncAIPClient(base_url=aip_endpoint)
 
-        # HTTP client for Membase communication
+        # HTTP client for Membase communication (agent-sdk specific feature)
         self._http_client = httpx.AsyncClient(timeout=10.0)
 
-        # A2A Protocol support
+        # A2A Protocol support (agent-sdk specific feature)
         self._a2a_client = A2AClient()
         self._discovered_agents: Dict[str, AgentCard] = {}
     
@@ -73,24 +73,47 @@ class AgentRegistry:
         name: str,
         agent_type: AgentType,
         wallet_address: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        user_id: str = "system"
     ) -> AgentIdentity:
         """
-        Register a new agent.
-        
+        Register a new agent via AIP SDK.
+
+        This method delegates to AIP SDK for registration and adds
+        identity/wallet management on top.
+
         Args:
             name: Agent name
             agent_type: Type of the agent
             wallet_address: Web3 wallet address (optional, managed by AIP SDK)
             metadata: Additional metadata
-        
+            user_id: User ID who owns this agent (default: "system")
+
         Returns:
             AgentIdentity: The agent's identity information
         """
-        # 1. Generate agent ID
-        agent_id = self._generate_agent_id(name)
-        
-        # 2. Create identity object (AIP SDK handles full identity management)
+        # 1. Create AIP AgentConfig (delegation to AIP SDK)
+        agent_config = AIPAgentConfig(
+            name=name,
+            description=metadata.get("description", "") if metadata else "",
+            handle=metadata.get("handle", name.lower().replace(" ", "_")) if metadata else name.lower().replace(" ", "_"),
+            capabilities=metadata.get("capabilities", []) if metadata else [],
+            metadata={
+                "agent_type": agent_type.value,
+                "wallet_address": wallet_address,
+                **(metadata or {})
+            }
+        )
+
+        # 2. Register via AIP SDK (single source of truth for registration)
+        try:
+            result = await self._aip_client.register_agent(user_id, agent_config)
+            agent_id = result.get("agent_id", self._generate_agent_id(name))
+        except Exception as e:
+            logger.warning(f"AIP registration failed, using local ID: {e}", exc_info=True)
+            agent_id = self._generate_agent_id(name)
+
+        # 3. Create AgentIdentity (agent-sdk's added value: identity layer)
         identity = AgentIdentity(
             agent_id=agent_id,
             name=name,
@@ -99,13 +122,10 @@ class AgentRegistry:
             wallet_address=wallet_address,
             metadata=metadata or {}
         )
-        
-        # 3. Register to AIP protocol (skip on failure)
-        await self._register_to_aip(identity)
-        
-        # 4. Initialize memory space in Membase (skip on failure)
+
+        # 4. Initialize memory space in Membase (agent-sdk specific)
         await self._initialize_membase(identity)
-        
+
         # 5. Save to local registry
         self._identities[identity.agent_id] = identity
 
@@ -193,19 +213,14 @@ class AgentRegistry:
         if target_agent:
             return {"status": "delivered_locally", "to": to_agent_id, "message": message}
 
-        # Send via AIP protocol (direct HTTP for now - messaging not in AIP SDK yet)
+        # Send via AIP SDK client (delegated to AIP SDK)
         try:
-            response = await self._http_client.post(
-                f"{self.aip_endpoint}/messages/send",
-                json={
-                    "from": from_agent_id,
-                    "to": to_agent_id,
-                    "message": message,
-                    "protocol": protocol
-                }
+            return await self._aip_client.send_message(
+                from_agent=from_agent_id,
+                to_agent=to_agent_id,
+                message=message,
+                protocol=protocol
             )
-            response.raise_for_status()
-            return response.json()
         except Exception as e:
             logger.error(f"AIP message send failed: {e}", exc_info=True)
             raise RegistryError(f"Failed to send message to agent {to_agent_id}: {e}")
@@ -222,38 +237,12 @@ class AgentRegistry:
         # Update local cache
         self._identities[agent_id].metadata.update(metadata)
 
-        # Sync to AIP platform (direct HTTP for now - metadata update not in AIP SDK yet)
+        # Sync to AIP platform via AIP SDK client (delegated)
         try:
-            await self._http_client.patch(
-                f"{self.aip_endpoint}/agents/{agent_id}",
-                json={"metadata": metadata}
-            )
+            await self._aip_client.update_agent_metadata(agent_id, metadata)
         except Exception as e:
             logger.warning(f"Metadata sync to AIP failed (local cache updated): {e}", exc_info=True)
-    
-    async def _register_to_aip(self, identity: AgentIdentity) -> None:
-        """Register agent to AIP platform using AIP SDK."""
-        try:
-            # Create AIP AgentConfig for registration
-            agent_config = AIPAgentConfig(
-                name=identity.name,
-                description=identity.metadata.get("description", ""),
-                handle=identity.metadata.get("handle", identity.name.lower().replace(" ", "_")),
-                metadata={
-                    "agent_id": identity.agent_id,
-                    "agent_type": identity.agent_type.value,
-                    "public_key": identity.public_key,
-                    "wallet_address": identity.wallet_address,
-                    **identity.metadata
-                }
-            )
 
-            # Register using AIP SDK client
-            await self._aip_client.register_agent(agent_config)
-            logger.info(f"Agent registered to AIP platform: {identity.agent_id}")
-        except Exception as e:
-            logger.warning(f"AIP registration failed (continuing): {e}", exc_info=True)
-    
     async def _initialize_membase(self, identity: AgentIdentity) -> None:
         """Initialize memory space in Membase."""
         try:
