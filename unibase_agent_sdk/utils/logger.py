@@ -53,14 +53,15 @@ class UnibaseLogger:
         """
         self.logger.info(msg, extra=kwargs)
 
-    def warning(self, msg: str, **kwargs):
+    def warning(self, msg: str, exc_info: bool = False, **kwargs):
         """Log warning message.
 
         Args:
             msg: Message to log
+            exc_info: If True, include exception traceback
             **kwargs: Additional context as extra fields
         """
-        self.logger.warning(msg, extra=kwargs)
+        self.logger.warning(msg, exc_info=exc_info, extra=kwargs)
 
     def error(self, msg: str, exc_info: bool = False, **kwargs):
         """Log error message.

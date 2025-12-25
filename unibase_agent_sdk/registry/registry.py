@@ -111,7 +111,8 @@ class AgentRegistry:
         agent_type: AgentType,
         wallet_address: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        user_id: str = "system"
+        user_id: str = "system",
+        force: bool = False
     ) -> AgentIdentity:
         """
         Register a new agent.
@@ -126,6 +127,7 @@ class AgentRegistry:
             wallet_address: Web3 wallet address (optional, managed by AIP SDK)
             metadata: Additional metadata
             user_id: User ID who owns this agent (default: "system")
+            force: Force re-registration if agent already exists (default: False)
 
         Returns:
             AgentIdentity: The agent's identity information
@@ -156,7 +158,8 @@ class AgentRegistry:
                     metadata={
                         "agent_type": agent_type.value,
                         **(metadata or {})
-                    }
+                    },
+                    force=force
                 )
                 endpoint_url = gateway_result.get("gateway_url")
                 logger.info(f"Agent registered with gateway: {endpoint_url}")
@@ -173,8 +176,9 @@ class AgentRegistry:
         try:
             result = await self._aip_client.register_agent(user_id, agent_config)
             agent_id = result.get("agent_id", self._generate_agent_id(name))
+            logger.info(f"Agent registered with AIP platform: {agent_id}")
         except Exception as e:
-            logger.warning(f"AIP registration failed, using local ID: {e}", exc_info=True)
+            logger.warning(f"AIP registration failed, using local ID: {e}")
             agent_id = self._generate_agent_id(name)
 
         # 3. Create AgentIdentity
@@ -193,8 +197,9 @@ class AgentRegistry:
             }
         )
 
-        # 4. Initialize memory space in Membase
-        await self._initialize_membase(identity)
+        # 4. Initialize memory space in Membase (skip in GATEWAY mode)
+        if self.mode != RegistrationMode.GATEWAY:
+            await self._initialize_membase(identity)
 
         # 5. Save to local registry
         self._identities[identity.agent_id] = identity
