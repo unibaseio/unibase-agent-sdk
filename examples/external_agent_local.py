@@ -252,11 +252,36 @@ class CalculatorAgent(AIPRegisteredExternalAgent):
     Or natural language in user_request field that will be parsed.
     """
 
+    def _extract_user_request(self, payload: Dict[str, Any]) -> str | None:
+        """Extract user_request from various payload formats including A2A JSON-RPC."""
+        # Direct user_request field
+        if "user_request" in payload:
+            return payload["user_request"]
+
+        # A2A JSON-RPC format: params.message.parts[0].text contains JSON with task.payload.user_request
+        if payload.get("jsonrpc") == "2.0" and "params" in payload:
+            try:
+                message = payload["params"].get("message", {})
+                parts = message.get("parts", [])
+                if parts and parts[0].get("kind") == "text":
+                    text = parts[0].get("text", "")
+                    # Parse the JSON text
+                    import json
+                    inner = json.loads(text)
+                    task_payload = inner.get("task", {}).get("payload", {})
+                    if "user_request" in task_payload:
+                        return task_payload["user_request"]
+            except (json.JSONDecodeError, KeyError, IndexError):
+                pass
+
+        return None
+
     async def execute_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Perform calculation based on payload."""
-        # Handle user_request from AIP routing
-        if "user_request" in payload:
-            return await self._handle_natural_language(payload["user_request"])
+        # Handle user_request from AIP routing (including A2A format)
+        user_request = self._extract_user_request(payload)
+        if user_request:
+            return await self._handle_natural_language(user_request)
 
         operation = payload.get("operation", "add")
         a = float(payload.get("a", 0))
