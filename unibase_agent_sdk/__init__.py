@@ -37,7 +37,7 @@ from unibase_agent_sdk.core.base_agent import TransparentAgentProxy
 from unibase_agent_sdk.core.base_memory import BaseMemory
 
 # Agent management
-from unibase_agent_sdk.registry.registry import AgentRegistry
+from unibase_agent_sdk.registry.registry import AgentRegistry, RegistrationMode
 
 # Memory management
 from unibase_agent_sdk.memory.manager import MemoryManager
@@ -74,6 +74,7 @@ __all__ = [
     "BaseMemory",
     # Agent management
     "AgentRegistry",
+    "RegistrationMode",
     # Memory management
     "MemoryManager",
     "MembaseClient",
