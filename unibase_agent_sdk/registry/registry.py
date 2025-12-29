@@ -19,6 +19,21 @@ from aip_sdk.gateway_client import GatewayClient
 logger = get_logger("registry.registry")
 
 
+def _get_default_aip_endpoint() -> str:
+    """Get default AIP endpoint from deployment config or environment."""
+    # Check environment variable first
+    env_url = os.environ.get("AIP_ENDPOINT")
+    if env_url:
+        return env_url
+
+    try:
+        from aip.core.deployment_config import get_config
+        config = get_config()
+        return config.aip.public_url
+    except Exception:
+        return "http://localhost:8001"
+
+
 class RegistrationMode(Enum):
     """Agent registration mode."""
     DIRECT = "direct"  # Register directly with AIP platform
@@ -70,8 +85,8 @@ class AgentRegistryClient:
             gateway_url: Gateway URL when using GATEWAY mode (optional, can use env var GATEWAY_URL)
             agent_backend_url: Agent's backend URL when using GATEWAY mode (optional, can use env var AGENT_BACKEND_URL)
         """
-        # Load from environment if not provided
-        self.aip_endpoint = aip_endpoint or os.getenv("AIP_ENDPOINT", "http://localhost:8001")
+        # Load from environment or deployment config if not provided
+        self.aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
         self.membase_endpoint = membase_endpoint or os.getenv("MEMBASE_ENDPOINT", "http://localhost:8002")
         self.mode = mode
         self.gateway_url = gateway_url or os.getenv("GATEWAY_URL")

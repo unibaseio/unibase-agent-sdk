@@ -53,7 +53,7 @@ class A2AServer:
         >>> card = AgentCard(
         ...     name="My Agent",
         ...     description="A helpful AI agent",
-        ...     url="http://localhost:8000"
+        ...     url="http://my-agent.example.com:8000"  # Your agent's public URL
         ... )
         >>>
         >>> server = A2AServer(agent_card=card, task_handler=handle_task)

@@ -25,7 +25,7 @@ Usage Examples:
         port=8100,
         # Account integration
         user_id="user:0x1234...",
-        aip_endpoint="http://localhost:8001",
+        # aip_endpoint auto-detected from AIP_ENVIRONMENT config
     )
     await server.run()  # Registers agent on startup
     ```
@@ -94,6 +94,20 @@ from unibase_agent_sdk.a2a.types import (
 from unibase_agent_sdk.utils.logger import get_logger
 
 logger = get_logger("wrappers.generic")
+
+
+def _get_default_aip_endpoint() -> str:
+    """Get default AIP endpoint from deployment config or environment."""
+    env_url = os.environ.get("AIP_ENDPOINT")
+    if env_url:
+        return env_url
+
+    try:
+        from aip.core.deployment_config import get_config
+        config = get_config()
+        return config.aip.public_url
+    except Exception:
+        return "http://localhost:8001"
 
 
 # Type aliases
@@ -190,7 +204,7 @@ def expose_as_a2a(
                  If provided, the agent will be registered with AIP platform.
                  Can also be set via AIP_USER_ID environment variable.
         aip_endpoint: AIP platform endpoint URL for agent registration.
-                      Default: http://localhost:8001 or AIP_ENDPOINT env var.
+                      Auto-detected from AIP_ENDPOINT env var or deployment config.
         handle: Agent handle for registration (default: derived from name).
                 The agent will be registered as "erc8004:{handle}".
         auto_register: If True (default), automatically register with AIP
@@ -208,13 +222,12 @@ def expose_as_a2a(
         server = expose_as_a2a("Greeter", greet, port=8100)
         await server.run()
 
-        # With AIP platform registration
+        # With AIP platform registration (aip_endpoint auto-detected)
         server = expose_as_a2a(
             "MyAgent",
             handler,
             port=8100,
             user_id="user:0x1234...",
-            aip_endpoint="http://localhost:8001",
         )
         await server.run()  # Registers agent on startup
 
@@ -262,7 +275,7 @@ def expose_as_a2a(
 
     # Resolve account integration settings
     resolved_user_id = user_id or os.getenv("AIP_USER_ID")
-    resolved_aip_endpoint = aip_endpoint or os.getenv("AIP_ENDPOINT", "http://localhost:8001")
+    resolved_aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
 
     # Create registration config if user_id is provided
     registration_config = None
