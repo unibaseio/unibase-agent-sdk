@@ -38,51 +38,60 @@ from .types import (
 
 class A2AServer:
     """A2A-compliant server for exposing Unibase agents.
-    
+
     This server implements the A2A protocol specification, allowing
     any Unibase agent to be discovered and communicated with by
     standard A2A clients.
-    
+
     Example:
         >>> from unibase_agent_sdk.a2a import A2AServer, AgentCard, Message
-        >>> 
+        >>>
         >>> async def handle_task(task: Task, message: Message):
         ...     # Process the message and yield responses
         ...     yield StreamResponse(message=Message.agent("Hello!"))
-        >>> 
+        >>>
         >>> card = AgentCard(
         ...     name="My Agent",
         ...     description="A helpful AI agent",
         ...     url="http://localhost:8000"
         ... )
-        >>> 
+        >>>
         >>> server = A2AServer(agent_card=card, task_handler=handle_task)
         >>> await server.run()
     """
-    
+
     def __init__(
         self,
         agent_card: AgentCard,
         task_handler: Callable[[Task, Message], AsyncIterator[StreamResponse]],
         host: str = "0.0.0.0",
         port: int = 8000,
+        registration_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize A2A server.
-        
+
         Args:
             agent_card: Agent Card describing this agent
             task_handler: Async generator function that processes tasks
             host: Host to bind the server to
             port: Port to listen on
+            registration_config: Optional config for AIP platform registration.
+                                 If provided, agent will be registered on startup.
+                                 Keys: user_id, aip_endpoint, handle, name, description, skills
         """
         self.agent_card = agent_card
         self.task_handler = task_handler
         self.host = host
         self.port = port
-        
+        self.registration_config = registration_config
+
         # Task storage (in-memory for now)
         self._tasks: Dict[str, Task] = {}
-        
+
+        # Registration state
+        self._agent_id: Optional[str] = None
+        self._aip_client = None
+
         # Create FastAPI app
         self._app = None
     
@@ -102,7 +111,16 @@ class A2AServer:
         async def lifespan(app):
             logger.info(f"A2A Server starting at http://{self.host}:{self.port}")
             logger.info(f"Agent Card: http://{self.host}:{self.port}/.well-known/agent.json")
+
+            # Register with AIP platform if configured
+            if self.registration_config:
+                await self._register_with_aip()
+
             yield
+
+            # Cleanup on shutdown
+            if self._aip_client:
+                await self._aip_client.close()
             logger.info("A2A Server shutting down")
         
         app = FastAPI(
@@ -362,7 +380,67 @@ class A2AServer:
         
         task.status = TaskStatus(state=TaskState.CANCELED)
         return task.to_dict()
-    
+
+    async def _register_with_aip(self):
+        """Register agent with AIP platform."""
+        if not self.registration_config:
+            return
+
+        try:
+            from aip_sdk import AsyncAIPClient, AgentConfig, SkillConfig
+        except ImportError:
+            logger.warning(
+                "aip_sdk not available, skipping AIP registration. "
+                "Install with: pip install unibase-aip-sdk"
+            )
+            return
+
+        config = self.registration_config
+        user_id = config["user_id"]
+        aip_endpoint = config["aip_endpoint"]
+        handle = config["handle"]
+
+        logger.info(f"Registering agent with AIP platform at {aip_endpoint}")
+        logger.info(f"  User ID: {user_id}")
+        logger.info(f"  Handle: erc8004:{handle}")
+
+        try:
+            # Create AIP client
+            self._aip_client = AsyncAIPClient(base_url=aip_endpoint)
+
+            # Build agent config
+            skills = [
+                SkillConfig(
+                    skill_id=s["id"],
+                    name=s["name"],
+                    description=s.get("description", ""),
+                )
+                for s in config.get("skills", [])
+            ]
+
+            agent_config = AgentConfig(
+                name=config["name"],
+                handle=handle,
+                description=config.get("description", ""),
+                endpoint_url=f"http://{self.host}:{self.port}",
+                skills=skills,
+            )
+
+            # Register with platform
+            result = await self._aip_client.register_agent(user_id, agent_config)
+            self._agent_id = result.get("agent_id", f"erc8004:{handle}")
+
+            logger.info(f"Agent registered successfully: {self._agent_id}")
+
+        except Exception as e:
+            logger.warning(f"AIP registration failed (agent will run without registration): {e}")
+            # Don't fail startup - agent can still work without platform registration
+
+    @property
+    def agent_id(self) -> Optional[str]:
+        """Get the registered agent ID (if registered with AIP)."""
+        return self._agent_id
+
     async def run(self):
         """Start the A2A server."""
         try:

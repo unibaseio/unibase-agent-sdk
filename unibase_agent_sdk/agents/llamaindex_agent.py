@@ -21,7 +21,7 @@ import hashlib
 import time
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
     from ..memory.manager import MemoryManager
 
 # Try to import LlamaIndex
@@ -40,7 +40,7 @@ class LlamaAgent(ReActAgent if HAS_LLAMAINDEX else object):
     Use exactly like llama_index.core.agent.ReActAgent!
     """
     
-    _unibase_registry: 'AgentRegistry' = None
+    _unibase_registry: 'AgentRegistryClient' = None
     _unibase_memory: 'MemoryManager' = None
     _unibase_identity = None
     
@@ -48,7 +48,7 @@ class LlamaAgent(ReActAgent if HAS_LLAMAINDEX else object):
     def from_tools(
         cls,
         tools: List = None,
-        registry: 'AgentRegistry' = None,
+        registry: 'AgentRegistryClient' = None,
         memory_manager: 'MemoryManager' = None,
         **kwargs
     ):

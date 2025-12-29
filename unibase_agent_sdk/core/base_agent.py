@@ -5,7 +5,7 @@ from .proxy_utils import TransparentProxy
 from ..memory.manager import MemoryManager
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
 
 
 class TransparentAgentProxy(TransparentProxy, ABC):
@@ -28,7 +28,7 @@ class TransparentAgentProxy(TransparentProxy, ABC):
     def __init__(
         self,
         identity: AgentIdentity,
-        registry: 'AgentRegistry',
+        registry: 'AgentRegistryClient',
         memory_manager: Optional[MemoryManager] = None
     ):
         self.identity = identity

@@ -70,7 +70,3 @@ class TransparentMemoryMiddleware(TransparentProxy, ABC):
     def get_middleware_name(self) -> str:
         """Get the middleware name."""
         return self.__class__.__name__
-
-
-# Alias for backward compatibility
-BaseMemoryMiddleware = TransparentMemoryMiddleware

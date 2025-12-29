@@ -1,6 +1,6 @@
 """Memory middlewares for various storage backends."""
 
-from .base import TransparentMemoryMiddleware, BaseMemoryMiddleware
+from .base import TransparentMemoryMiddleware
 
 # AI Agent Memory Frameworks
 from .mem0_middleware import Mem0Middleware
@@ -20,7 +20,6 @@ from .redis_middleware import RedisMiddleware
 __all__ = [
     # Base
     "TransparentMemoryMiddleware",
-    "BaseMemoryMiddleware",
     
     # AI Agent Memory
     "Mem0Middleware",

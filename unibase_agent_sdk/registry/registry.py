@@ -37,16 +37,19 @@ from ..core.type_adapters import (
 )
 
 
-class AgentRegistry:
+class AgentRegistryClient:
     """
-    Agent Registry - Thin wrapper around AIP SDK for agent management.
+    Agent Registry Client - Wrapper around AIP SDK for agent management.
 
-    Provides additional functionality:
+    This client provides additional functionality on top of the AIP SDK:
     - Identity management (keypairs, signing)
     - Web3 wallet integration
     - A2A protocol support for agent discovery and communication
     - Local agent instance tracking
     - Gateway mode support for agents behind firewalls
+
+    Note: This is distinct from aip.core.agents.registry.AgentRegistry which
+    is the platform's abstract interface. This class is a client implementation.
     """
 
     def __init__(

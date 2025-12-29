@@ -8,7 +8,7 @@ import time
 logger = get_logger("adapters.claude")
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
 
 class ClaudeAdapter(TransparentAgentProxy):
     """
@@ -18,7 +18,7 @@ class ClaudeAdapter(TransparentAgentProxy):
     def __init__(
         self,
         identity: AgentIdentity,
-        registry: 'AgentRegistry',
+        registry: 'AgentRegistryClient',
         memory_manager: Optional['MemoryManager'] = None
     ):
         super().__init__(identity, registry, memory_manager)

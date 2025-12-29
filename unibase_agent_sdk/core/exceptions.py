@@ -1,16 +1,29 @@
-"""Custom exceptions for Unibase Framework.
+"""Custom exceptions for Unibase Agent SDK.
 
-This module defines a hierarchical exception structure for better error handling
-and debugging across the framework.
+This module defines a hierarchical exception structure for better error handling.
+Common exceptions are imported from aip_sdk for consistency across SDKs.
+Agent-SDK-specific exceptions are defined here.
 """
 
+# Import common exceptions from aip_sdk for consistency
+from aip_sdk.exceptions import (
+    AIPError,
+    AuthenticationError as AIPAuthenticationError,
+    RegistrationError as AIPRegistrationError,
+    ValidationError,
+    AgentNotFoundError as AIPAgentNotFoundError,
+)
 
-class UnibaseError(Exception):
-    """Base exception for all Unibase framework errors.
 
-    All custom exceptions in the framework should inherit from this class.
+class UnibaseError(AIPError):
+    """Base exception for all Unibase Agent SDK errors.
+
+    Extends AIPError for consistency with the platform SDK.
+    All custom exceptions in the agent SDK should inherit from this class.
     """
-    pass
+
+    def __init__(self, message: str, code: str = None, **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class InitializationError(UnibaseError):
@@ -18,7 +31,9 @@ class InitializationError(UnibaseError):
 
     This includes SDK initialization, middleware setup, or agent registration failures.
     """
-    pass
+
+    def __init__(self, message: str = "Initialization failed", code: str = "INIT_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class ConfigurationError(UnibaseError):
@@ -26,7 +41,9 @@ class ConfigurationError(UnibaseError):
 
     This includes missing required parameters, invalid values, or conflicting settings.
     """
-    pass
+
+    def __init__(self, message: str = "Configuration error", code: str = "CONFIG_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class RegistryError(UnibaseError):
@@ -35,7 +52,9 @@ class RegistryError(UnibaseError):
     This includes agent registration failures, identity management issues,
     or communication with the AIP endpoint.
     """
-    pass
+
+    def __init__(self, message: str = "Registry error", code: str = "REGISTRY_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class AgentNotFoundError(RegistryError):
@@ -45,9 +64,10 @@ class AgentNotFoundError(RegistryError):
         agent_id: The ID of the agent that was not found
     """
 
-    def __init__(self, agent_id: str):
+    def __init__(self, agent_id: str, **kwargs):
         self.agent_id = agent_id
-        super().__init__(f"Agent not found: {agent_id}")
+        super().__init__(f"Agent not found: {agent_id}", code="AGENT_NOT_FOUND", **kwargs)
+        self.details["agent_id"] = agent_id
 
 
 class MemoryError(UnibaseError):
@@ -55,7 +75,9 @@ class MemoryError(UnibaseError):
 
     This includes failures in memory storage, retrieval, or synchronization.
     """
-    pass
+
+    def __init__(self, message: str = "Memory operation failed", code: str = "MEMORY_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class MiddlewareError(MemoryError):
@@ -63,7 +85,9 @@ class MiddlewareError(MemoryError):
 
     This includes middleware initialization failures or operational issues.
     """
-    pass
+
+    def __init__(self, message: str = "Middleware error", code: str = "MIDDLEWARE_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class MiddlewareNotAvailableError(MiddlewareError):
@@ -77,12 +101,13 @@ class MiddlewareNotAvailableError(MiddlewareError):
         >>> raise MiddlewareNotAvailableError("mem0", "pip install mem0ai")
     """
 
-    def __init__(self, middleware: str, install_cmd: str):
+    def __init__(self, middleware: str, install_cmd: str, **kwargs):
         self.middleware = middleware
         self.install_cmd = install_cmd
-        super().__init__(
-            f"{middleware} is not available. Install with: {install_cmd}"
-        )
+        message = f"{middleware} is not available. Install with: {install_cmd}"
+        super().__init__(message, code="MIDDLEWARE_NOT_AVAILABLE", **kwargs)
+        self.details["middleware"] = middleware
+        self.details["install_cmd"] = install_cmd
 
 
 class A2AProtocolError(UnibaseError):
@@ -90,7 +115,9 @@ class A2AProtocolError(UnibaseError):
 
     This includes JSON-RPC errors, task management issues, or agent discovery failures.
     """
-    pass
+
+    def __init__(self, message: str = "A2A protocol error", code: str = "A2A_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class AgentDiscoveryError(A2AProtocolError):
@@ -98,7 +125,9 @@ class AgentDiscoveryError(A2AProtocolError):
 
     This includes network errors, invalid agent cards, or unavailable endpoints.
     """
-    pass
+
+    def __init__(self, message: str = "Agent discovery failed", code: str = "DISCOVERY_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class TaskExecutionError(A2AProtocolError):
@@ -106,7 +135,9 @@ class TaskExecutionError(A2AProtocolError):
 
     This includes task creation, status updates, or message delivery failures.
     """
-    pass
+
+    def __init__(self, message: str = "Task execution failed", code: str = "TASK_EXEC_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class AuthenticationError(UnibaseError):
@@ -114,7 +145,9 @@ class AuthenticationError(UnibaseError):
 
     This includes invalid tokens, signature verification failures, or expired credentials.
     """
-    pass
+
+    def __init__(self, message: str = "Authentication failed", code: str = "AUTH_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
 
 
 class WalletError(UnibaseError):
@@ -122,4 +155,34 @@ class WalletError(UnibaseError):
 
     This includes wallet creation failures, signing errors, or blockchain communication issues.
     """
-    pass
+
+    def __init__(self, message: str = "Wallet error", code: str = "WALLET_ERROR", **kwargs):
+        super().__init__(message, code=code, **kwargs)
+
+
+# Re-export common exceptions for convenience
+__all__ = [
+    # Base errors
+    "AIPError",
+    "UnibaseError",
+    # Initialization and config
+    "InitializationError",
+    "ConfigurationError",
+    # Registry
+    "RegistryError",
+    "AgentNotFoundError",
+    # Memory
+    "MemoryError",
+    "MiddlewareError",
+    "MiddlewareNotAvailableError",
+    # A2A Protocol
+    "A2AProtocolError",
+    "AgentDiscoveryError",
+    "TaskExecutionError",
+    # Auth
+    "AuthenticationError",
+    # Wallet
+    "WalletError",
+    # Validation
+    "ValidationError",
+]

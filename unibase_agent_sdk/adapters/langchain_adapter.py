@@ -9,7 +9,7 @@ import time
 logger = get_logger("adapters.langchain")
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
     from ..memory.manager import MemoryManager
 
 # Try to import LangChain with OpenAI (primary) or Anthropic (fallback)
@@ -40,7 +40,7 @@ class LangChainAdapter(TransparentAgentProxy):
     def __init__(
         self,
         identity: AgentIdentity,
-        registry: 'AgentRegistry',
+        registry: 'AgentRegistryClient',
         memory_manager: Optional['MemoryManager'] = None,
         provider: str = "openai"  # "openai" or "anthropic"
     ):

@@ -74,13 +74,17 @@ class DAUploadResult:
 
 
 # Config types
-class AgentConfig(TypedDict, total=False):
-    """Agent configuration."""
+class LLMProviderConfig(TypedDict, total=False):
+    """LLM provider configuration for adapters (Claude, OpenAI, LangChain).
+
+    Note: For agent registration config, use aip_sdk.types.AgentConfig instead.
+    """
     api_key: str
     base_url: str
     model: str
     timeout: float
     extra_params: Dict[str, Any]
+
 
 
 class MemoryConfig(TypedDict, total=False):

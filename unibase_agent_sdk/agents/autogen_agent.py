@@ -29,7 +29,7 @@ import hashlib
 import time
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
     from ..memory.manager import MemoryManager
 
 # Try to import AutoGen
@@ -46,7 +46,7 @@ except ImportError:
 class UnibaseAgentMixin:
     """Mixin to add Unibase features to AutoGen agents"""
     
-    _unibase_registry: 'AgentRegistry' = None
+    _unibase_registry: 'AgentRegistryClient' = None
     _unibase_memory: 'MemoryManager' = None
     _unibase_identity = None
     
@@ -99,7 +99,7 @@ class AutoGenAssistant(UnibaseAgentMixin, AssistantAgent if HAS_AUTOGEN else obj
         self,
         name: str,
         system_message: str = None,
-        registry: 'AgentRegistry' = None,
+        registry: 'AgentRegistryClient' = None,
         memory_manager: 'MemoryManager' = None,
         **kwargs
     ):
@@ -129,7 +129,7 @@ class AutoGenUserProxy(UnibaseAgentMixin, UserProxyAgent if HAS_AUTOGEN else obj
     def __init__(
         self,
         name: str,
-        registry: 'AgentRegistry' = None,
+        registry: 'AgentRegistryClient' = None,
         memory_manager: 'MemoryManager' = None,
         **kwargs
     ):

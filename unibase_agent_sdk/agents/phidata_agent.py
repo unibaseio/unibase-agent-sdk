@@ -21,7 +21,7 @@ import hashlib
 import time
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
     from ..memory.manager import MemoryManager
 
 # Try to import Phidata
@@ -35,7 +35,7 @@ except ImportError:
 
 def create_phi_agent(
     name: str = None,
-    registry: 'AgentRegistry' = None,
+    registry: 'AgentRegistryClient' = None,
     memory_manager: 'MemoryManager' = None,
     **kwargs
 ) -> 'NativePhiAgent':
@@ -71,7 +71,7 @@ def create_phi_agent(
     return agent
 
 
-def _register_agent_with_unibase(agent, registry: 'AgentRegistry'):
+def _register_agent_with_unibase(agent, registry: 'AgentRegistryClient'):
     """Register a Phidata agent with Unibase"""
     try:
         agent_name = agent.name or "phi_agent"

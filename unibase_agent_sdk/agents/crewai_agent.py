@@ -23,7 +23,7 @@ import hashlib
 import time
 
 if TYPE_CHECKING:
-    from ..agent.registry import AgentRegistry
+    from ..registry.registry import AgentRegistryClient
     from ..memory.manager import MemoryManager
 
 # Try to import CrewAI
@@ -39,7 +39,7 @@ def create_crewai_agent(
     role: str,
     goal: str,
     backstory: str = None,
-    registry: 'AgentRegistry' = None,
+    registry: 'AgentRegistryClient' = None,
     memory_manager: 'MemoryManager' = None,
     **kwargs
 ) -> 'NativeCrewAIAgent':
@@ -85,7 +85,7 @@ def create_crewai_agent(
     return agent
 
 
-def _register_agent_with_unibase(agent, registry: 'AgentRegistry'):
+def _register_agent_with_unibase(agent, registry: 'AgentRegistryClient'):
     """Register a CrewAI agent with Unibase"""
     try:
         agent_id = f"crewai_{hashlib.sha256(f'{agent.role}_{time.time()}'.encode()).hexdigest()[:16]}"
