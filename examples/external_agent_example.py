@@ -6,14 +6,19 @@ This example shows how to create and run an agent on your local machine
 that connects to a remote gateway using the task queue pull model.
 
 Usage:
-    # Run agent (connects to localhost gateway by default)
+    # Run agent (connects to gateway from environment or defaults to localhost)
     python examples/external_agent_example.py
 
     # Run with remote gateway
     python examples/external_agent_example.py --gateway https://gateway.example.com
+
+Environment Variables:
+    - GATEWAY_URL: Gateway URL (auto-detected from config)
+    - AIP_ENVIRONMENT: Deployment environment (local, staging, production)
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -93,10 +98,13 @@ Test it by calling the platform:
         """
     )
 
+    # Get default gateway URL from environment or use localhost
+    default_gateway = os.environ.get("GATEWAY_URL", "http://localhost:8080")
+
     parser.add_argument(
         "--gateway",
-        default="http://localhost:8080",
-        help="Gateway URL (default: http://localhost:8080)"
+        default=default_gateway,
+        help=f"Gateway URL (default: {default_gateway})"
     )
     parser.add_argument(
         "--name",

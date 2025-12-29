@@ -2,9 +2,16 @@
 
 This agent provides weather forecasts for locations using the Unibase Agent SDK
 and A2A protocol.
+
+Environment Variables:
+    - AIP_ENDPOINT: AIP platform URL (auto-detected from config)
+    - MEMBASE_ENDPOINT: Membase URL (auto-detected from config)
+    - AGENT_PORT: Port to run the agent on (default: 8001)
+    - AIP_ENVIRONMENT: Deployment environment (local, staging, production)
 """
 
 import asyncio
+import os
 import re
 from typing import AsyncIterator
 
@@ -157,18 +164,16 @@ async def main():
     print("🌤️  Weather Agent - Unibase Agent SDK")
     print("=" * 70)
 
-    # Create registry
-    registry = AgentRegistry(
-        aip_endpoint="https://aip.unibase.io",
-        membase_endpoint="https://membase.unibase.io",
-    )
+    # Create registry - URLs auto-detected from environment or config
+    registry = AgentRegistry()
 
     # Create agent
     agent_card, agent = await create_weather_agent(registry)
 
     # Update URL for this server
-    port = 8001
-    agent_card.url = f"http://localhost:{port}"
+    port = int(os.environ.get("AGENT_PORT", "8001"))
+    host = os.environ.get("AGENT_HOST", "localhost")
+    agent_card.url = f"http://{host}:{port}"
 
     print(f"\n📝 Agent registered: {agent_card.name}")
     print(f"   Agent ID: {agent.agent_id}")

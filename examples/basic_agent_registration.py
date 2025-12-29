@@ -25,13 +25,15 @@ async def basic_example_with_registry():
     print("=" * 60)
     
     # 1. Create the registry (global singleton)
+    # URLs are auto-detected from environment variables or deployment config
+    # Set AIP_ENDPOINT, MEMBASE_ENDPOINT, or AIP_ENVIRONMENT as needed
     print("\n📋 Step 1: Creating AgentRegistry...")
     registry = AgentRegistry(
-        aip_endpoint="https://aip.unibase.io",
-        membase_endpoint="https://membase.unibase.io",
         web3_rpc_url=os.getenv("WEB3_RPC_URL")
     )
     print("✅ Registry created")
+    print(f"   AIP Endpoint: {registry.aip_endpoint}")
+    print(f"   Membase Endpoint: {registry.membase_endpoint}")
     
     # 2. Register agent identity
     print("\n📋 Step 2: Registering Agent identity...")
@@ -46,13 +48,17 @@ async def basic_example_with_registry():
     print(f"   Wallet: {identity.wallet_address}")
     
     # 3. Initialize Memory
+    # MemoryManager uses membase endpoint from registry or environment
     print("\n📋 Step 3: Initializing MemoryManager...")
+    membase_endpoint = os.getenv("MEMBASE_ENDPOINT", registry.membase_endpoint)
+    da_endpoint = os.getenv("DA_ENDPOINT", "https://da.unibase.io")
     memory_manager = MemoryManager(
-        membase_endpoint="https://membase.unibase.io",
-        da_endpoint="https://da.unibase.io",
+        membase_endpoint=membase_endpoint,
+        da_endpoint=da_endpoint,
         agent_id=identity.agent_id
     )
     print("✅ MemoryManager initialized")
+    print(f"   Membase: {membase_endpoint}")
     
     # 4. Add Memory middleware (optional - requires extra dependencies)
     print("\n📋 Step 4: Checking Memory middlewares...")
@@ -131,6 +137,9 @@ async def basic_example_with_registry():
     print("\n📖 Usage notes:")
     print("   - Set ANTHROPIC_API_KEY to enable Claude API calls")
     print("   - Set OPENAI_API_KEY to enable mem0 middleware")
+    print("   - Set AIP_ENDPOINT to override AIP platform URL")
+    print("   - Set MEMBASE_ENDPOINT to override Membase URL")
+    print("   - Set AIP_ENVIRONMENT to use preset configs (local, staging, production)")
     print("   - Ensure AIP and Membase services are running and accessible")
 
 

@@ -18,13 +18,15 @@ Prerequisites:
 
 2. Start your agent backend on a local port (e.g., 8103)
 
-Environment Variables (optional):
-- AIP_ENDPOINT: AIP platform URL (default: http://localhost:8001)
-- GATEWAY_URL: Gateway URL (default: http://localhost:8080)
+Environment Variables:
+- AIP_ENDPOINT: AIP platform URL (auto-detected from config)
+- GATEWAY_URL: Gateway URL (auto-detected from config)
 - AGENT_BACKEND_URL: Agent's backend URL (e.g., http://localhost:8103)
+- AIP_ENVIRONMENT: Deployment environment (local, staging, production)
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -47,14 +49,17 @@ async def main():
     print()
 
     # 1. Create registry in GATEWAY mode
+    # URLs are auto-detected from environment or deployment config
     print("[1/5] Initializing Registry (GATEWAY mode)")
     print("-" * 80)
 
+    # Get agent backend URL from environment or use default
+    agent_backend_url = os.environ.get("AGENT_BACKEND_URL", "http://localhost:8103")
+
+    # AgentRegistry auto-detects AIP and gateway URLs from environment
     registry = AgentRegistry(
-        aip_endpoint="http://localhost:8001",  # Or use env var AIP_ENDPOINT
         mode=RegistrationMode.GATEWAY,  # GATEWAY mode
-        gateway_url="http://localhost:8080",  # Or use env var GATEWAY_URL
-        agent_backend_url="http://localhost:8103"  # Or use env var AGENT_BACKEND_URL
+        agent_backend_url=agent_backend_url
     )
 
     print("  ✓ Registry initialized in GATEWAY mode")

@@ -13,6 +13,11 @@ Workflow:
 4. Your agent pulls the task, executes it, and returns the result
 5. This script receives streaming events and the final result
 
+Environment Variables:
+    - AIP_ENDPOINT: AIP platform URL (auto-detected from config)
+    - AIP_USER_ID: User ID for authentication
+    - AIP_ENVIRONMENT: Deployment environment (local, staging, production)
+
 Usage:
     # First, start your local agent in one terminal with a specific name:
     python packages/unibase-agent-sdk/examples/external_agent_local.py \
@@ -250,16 +255,19 @@ Examples:
 
   # Use custom AIP endpoint
   python trigger_agent_via_aip.py \\
-      --aip-endpoint http://13.215.218.179:5002 \\
+      --aip-endpoint http://your-aip-server:5002 \\
       --agent my-calculator \\
       --objective "Calculate 7 + 8"
         """
     )
 
+    # Get default AIP endpoint from environment
+    default_aip_endpoint = os.environ.get("AIP_ENDPOINT", "http://localhost:8001")
+
     parser.add_argument(
         "--aip-endpoint",
-        default=os.environ.get("AIP_ENDPOINT", "http://13.215.218.179:5002"),
-        help="AIP platform URL (default: $AIP_ENDPOINT or http://13.215.218.179:5002)"
+        default=default_aip_endpoint,
+        help=f"AIP platform URL (default: $AIP_ENDPOINT or {default_aip_endpoint})"
     )
     parser.add_argument(
         "--user-id",

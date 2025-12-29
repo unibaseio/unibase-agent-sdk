@@ -5,9 +5,16 @@ This example demonstrates how to use the generic wrappers to expose
 any existing agent/function as an A2A-compatible service.
 
 No framework-specific code required!
+
+Environment Variables:
+    - AGENT_HOST: Host to bind the agent to (default: localhost)
+    - AGENT_PORT: Port to run the agent on (varies by example)
+    - AIP_ENDPOINT: AIP platform URL (auto-detected from config)
+    - AIP_ENVIRONMENT: Deployment environment (local, staging, production)
 """
 
 import asyncio
+import os
 
 
 # =============================================================================
@@ -21,15 +28,18 @@ def example_simple_function():
     def echo(text: str) -> str:
         return f"Echo: {text}"
 
+    port = int(os.environ.get("AGENT_PORT", "8100"))
+    host = os.environ.get("AGENT_HOST", "0.0.0.0")
+
     server = expose_as_a2a(
         name="EchoAgent",
         handler=echo,
-        port=8100,
+        port=port,
         description="Simple echo agent that repeats your message",
     )
 
-    print("Starting EchoAgent on http://localhost:8100")
-    print("Agent Card: http://localhost:8100/.well-known/agent.json")
+    print(f"Starting EchoAgent on http://{host}:{port}")
+    print(f"Agent Card: http://{host}:{port}/.well-known/agent.json")
     server.run_sync()
 
 
@@ -46,14 +56,17 @@ async def example_async_function():
         await asyncio.sleep(0.1)
         return f"Processed: {text.upper()}"
 
+    port = int(os.environ.get("AGENT_PORT", "8101"))
+    host = os.environ.get("AGENT_HOST", "0.0.0.0")
+
     server = expose_as_a2a(
         name="ProcessorAgent",
         handler=process,
-        port=8101,
+        port=port,
         description="Async processor agent",
     )
 
-    print("Starting ProcessorAgent on http://localhost:8101")
+    print(f"Starting ProcessorAgent on http://{host}:{port}")
     await server.run()
 
 
@@ -87,8 +100,11 @@ def example_class_agent():
         method="process",  # Use the 'process' method as handler
     )
 
-    print("Starting MyAgent on http://localhost:8102")
-    wrapper.serve_sync(port=8102)
+    port = int(os.environ.get("AGENT_PORT", "8102"))
+    host = os.environ.get("AGENT_HOST", "0.0.0.0")
+
+    print(f"Starting MyAgent on http://{host}:{port}")
+    wrapper.serve_sync(port=port)
 
 
 # =============================================================================
@@ -151,8 +167,11 @@ def example_multi_skill():
         description="Agent with multiple skills",
     )
 
-    print("Starting MultiSkillAgent on http://localhost:8104")
-    wrapper.serve_sync(port=8104)
+    port = int(os.environ.get("AGENT_PORT", "8104"))
+    host = os.environ.get("AGENT_HOST", "0.0.0.0")
+
+    print(f"Starting MultiSkillAgent on http://{host}:{port}")
+    wrapper.serve_sync(port=port)
 
 
 # =============================================================================
@@ -177,15 +196,18 @@ def example_custom_skills():
         )
     ]
 
+    port = int(os.environ.get("AGENT_PORT", "8105"))
+    host = os.environ.get("AGENT_HOST", "0.0.0.0")
+
     server = expose_as_a2a(
         name="WeatherAgent",
         handler=weather,
-        port=8105,
+        port=port,
         skills=skills,
         description="Get weather forecasts for any location",
     )
 
-    print("Starting WeatherAgent on http://localhost:8105")
+    print(f"Starting WeatherAgent on http://{host}:{port}")
     server.run_sync()
 
 

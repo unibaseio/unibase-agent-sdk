@@ -6,10 +6,14 @@ Demonstrates how to discover and communicate with A2A-compatible agents.
 
 Usage:
     python a2a_client.py --agent-url http://localhost:8103
+
+Environment Variables:
+    - AGENT_URL: Default agent URL to connect to
 """
 
 import asyncio
 import argparse
+import os
 
 from unibase_agent_sdk import A2AClient, Message
 
@@ -92,10 +96,14 @@ async def stream_task(client: A2AClient, agent_url: str, message_text: str):
 
 async def main():
     parser = argparse.ArgumentParser(description="A2A Protocol Client Example")
+
+    # Get default agent URL from environment or use localhost
+    default_agent_url = os.environ.get("AGENT_URL", "http://localhost:8103")
+
     parser.add_argument(
         "--agent-url",
-        default="http://localhost:8103",
-        help="URL of the A2A agent to communicate with",
+        default=default_agent_url,
+        help=f"URL of the A2A agent to communicate with (default: {default_agent_url})",
     )
     parser.add_argument(
         "--message",

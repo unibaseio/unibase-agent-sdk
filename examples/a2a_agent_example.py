@@ -70,11 +70,10 @@ async def main():
     # 1. Create Registry and Register Agent
     # ============================================================
     print("\n📝 Creating Registry and Agent...")
-    
-    registry = AgentRegistry(
-        aip_endpoint="https://aip.unibase.io",
-        membase_endpoint="https://membase.unibase.io",
-    )
+
+    # AgentRegistry auto-detects URLs from environment variables
+    # Set AIP_ENDPOINT, MEMBASE_ENDPOINT, or AIP_ENVIRONMENT as needed
+    registry = AgentRegistry()
     
     identity = await registry.register_agent(
         name="Echo Agent",
@@ -99,8 +98,11 @@ async def main():
     # 2. Generate Agent Card
     # ============================================================
     print("\n📋 Generating Agent Card...")
-    
-    base_url = "http://localhost:8000"
+
+    # Get agent URL from environment or use localhost
+    port = int(os.environ.get("AGENT_PORT", "8000"))
+    host = os.environ.get("AGENT_HOST", "localhost")
+    base_url = f"http://{host}:{port}"
     
     agent_card = registry.generate_agent_card_for(
         agent_id=identity.agent_id,
@@ -130,7 +132,7 @@ async def main():
         agent_card=agent_card,
         task_handler=simple_echo_handler,
         host="0.0.0.0",
-        port=8000
+        port=port
     )
     
     try:
@@ -146,8 +148,9 @@ async def demo_a2a_client():
     print("=" * 70)
     print("🔷 A2A Client Demo")
     print("=" * 70)
-    
-    agent_url = "http://localhost:8000"
+
+    # Get agent URL from environment or use localhost
+    agent_url = os.environ.get("AGENT_URL", "http://localhost:8000")
     
     async with A2AClient() as client:
         # Discover agent

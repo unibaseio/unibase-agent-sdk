@@ -10,12 +10,14 @@ Use this mode when:
 - You have a stable public IP or domain
 - You don't need NAT traversal or firewall bypass
 
-Environment Variables (optional):
-- AIP_ENDPOINT: AIP platform URL (default: http://localhost:8001)
-- MEMBASE_ENDPOINT: Membase URL (default: http://localhost:8002)
+Environment Variables:
+- AIP_ENDPOINT: AIP platform URL (auto-detected from config or defaults to http://localhost:8001)
+- MEMBASE_ENDPOINT: Membase URL (auto-detected from config or defaults to http://localhost:8002)
+- AIP_ENVIRONMENT: Deployment environment (local, staging, production)
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -38,12 +40,12 @@ async def main():
     print()
 
     # 1. Create registry in DIRECT mode (default)
+    # URLs are auto-detected from environment or deployment config
     print("[1/4] Initializing Registry (DIRECT mode)")
     print("-" * 80)
 
+    # AgentRegistry auto-detects URLs from AIP_ENDPOINT env var or deployment config
     registry = AgentRegistry(
-        aip_endpoint="http://localhost:8001",  # Or use env var AIP_ENDPOINT
-        membase_endpoint="http://localhost:8002",  # Or use env var MEMBASE_ENDPOINT
         mode=RegistrationMode.DIRECT  # DIRECT mode - no gateway
     )
 

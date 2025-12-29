@@ -15,8 +15,14 @@ The agent:
 4. Executes tasks and returns results
 5. Sends heartbeats to stay registered
 
+Environment Variables:
+    - AIP_ENDPOINT: AIP platform URL (auto-detected from config)
+    - GATEWAY_URL: Gateway URL (auto-detected from config)
+    - AIP_USER_ID: User ID for agent registration
+    - AIP_ENVIRONMENT: Deployment environment (local, staging, production)
+
 Usage:
-    # Run with default settings (connects to remote AIP and Gateway)
+    # Run with default settings (connects to AIP and Gateway from environment)
     python packages/unibase-agent-sdk/examples/external_agent_local.py
 
     # Run with custom agent name
@@ -25,8 +31,8 @@ Usage:
 
     # Run with custom endpoints
     python packages/unibase-agent-sdk/examples/external_agent_local.py \
-        --aip-endpoint http://13.215.218.179:5002 \
-        --gateway http://13.212.253.141:8081 \
+        --aip-endpoint http://your-aip-server:5002 \
+        --gateway http://your-gateway:8081 \
         --name my-agent
 
 After the agent is running, trigger it using (specify the same agent name):
@@ -433,8 +439,8 @@ Examples:
 
   # Run with custom endpoints
   python external_agent_local.py \\
-      --aip-endpoint http://13.215.218.179:5002 \\
-      --gateway http://13.212.253.141:8081 \\
+      --aip-endpoint http://your-aip-server:5002 \\
+      --gateway http://your-gateway:8081 \\
       --type calculator
 
 Available agent types:
@@ -444,15 +450,19 @@ Available agent types:
         """
     )
 
+    # Get default endpoints from environment
+    default_aip_endpoint = os.environ.get("AIP_ENDPOINT", "http://localhost:8001")
+    default_gateway = os.environ.get("GATEWAY_URL", "http://localhost:8080")
+
     parser.add_argument(
         "--aip-endpoint",
-        default=os.environ.get("AIP_ENDPOINT", "http://13.215.218.179:5002"),
-        help="AIP platform URL (default: $AIP_ENDPOINT or http://13.215.218.179:5002)"
+        default=default_aip_endpoint,
+        help=f"AIP platform URL (default: $AIP_ENDPOINT or {default_aip_endpoint})"
     )
     parser.add_argument(
         "--gateway",
-        default=os.environ.get("GATEWAY_URL", "http://13.212.253.141:8081"),
-        help="Gateway URL (default: $GATEWAY_URL or http://13.212.253.141:8081)"
+        default=default_gateway,
+        help=f"Gateway URL (default: $GATEWAY_URL or {default_gateway})"
     )
     parser.add_argument(
         "--user-id",
