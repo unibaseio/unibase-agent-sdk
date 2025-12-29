@@ -152,7 +152,10 @@ message = Message.user("What's the weather?")
 task = await registry.send_a2a_task("https://agent.example.com", message)
 
 # Expose your agent as A2A server
-agent_card = registry.generate_agent_card_for(identity.agent_id, "http://localhost:8000")
+# Use your agent's public URL (from config or environment)
+import os
+agent_url = os.environ.get("AGENT_ENDPOINT_URL", "http://localhost:8000")
+agent_card = registry.generate_agent_card_for(identity.agent_id, agent_url)
 server = A2AServer(agent_card=agent_card, task_handler=my_handler)
 await server.run()  # Serves /.well-known/agent.json
 ```
