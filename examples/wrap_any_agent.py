@@ -41,7 +41,7 @@ def _get_agent_config(agent_name: str, default_port: int):
     """
     # Try to load from deployment config first
     try:
-        from aip.core.deployment_config import get_agent_config
+        from aip.core.config import get_agent_config
         config = get_agent_config(agent_name)
         port = config.port
         host = config.host

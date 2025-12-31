@@ -13,7 +13,6 @@ This module provides:
 from typing import Any, Callable, Optional
 import asyncio
 import inspect
-import functools
 from ..utils.logger import get_logger
 
 logger = get_logger("core.proxy_utils")
@@ -210,32 +209,3 @@ class TransparentProxy:
         Should be async to handle async methods.
         """
         pass
-
-
-def create_simple_wrapper(method: Callable) -> Callable:
-    """
-    Create a simple wrapper that handles both sync and async methods.
-
-    Utility function for cases where you just need transparent async/sync handling
-    without hooks.
-
-    Args:
-        method: The method to wrap
-
-    Returns:
-        Wrapped method that handles both sync and async contexts
-    """
-    if inspect.iscoroutinefunction(method) or asyncio.iscoroutinefunction(method):
-        @functools.wraps(method)
-        async def async_wrapper(*args, **kwargs):
-            return await method(*args, **kwargs)
-        return async_wrapper
-    else:
-        @functools.wraps(method)
-        def sync_wrapper(*args, **kwargs):
-            result = method(*args, **kwargs)
-            # Handle case where sync method returns a coroutine
-            if asyncio.iscoroutine(result):
-                return asyncio.create_task(result)
-            return result
-        return sync_wrapper
