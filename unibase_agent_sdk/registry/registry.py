@@ -13,7 +13,7 @@ import httpx
 # Import AIP SDK for agent registration and platform communication
 from aip_sdk import AsyncAIPClient, AgentConfig as AIPAgentConfig, SkillConfig
 from aip_sdk.exceptions import AIPError, RegistrationError as AIPRegistrationError
-from aip_sdk.gateway_client import GatewayClient
+from aip_sdk.gateway import GatewayClient
 
 logger = get_logger("registry.registry")
 

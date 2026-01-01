@@ -1,196 +1,311 @@
-# Unibase Agent Framework
+# Unibase Agent SDK
 
-A transparent SDK for building AI agents with integrated memory management and multi-SDK support.
-
-## Features
-
-- 🔄 **Transparent SDK Proxies**: Use Claude, OpenAI, LangChain as if using their native SDKs
-- 📋 **Agent Registry**: Global management and discovery of agents via Unibase AIP SDK
-- 🧠 **Unified Memory Management**: Integrate mem0, LangChain Memory, Zep, and more
-- 📤 **Automatic DA Upload**: All memories automatically uploaded to Unibase DA
-- 🔐 **Web3 Wallet Integration**: Built-in wallet creation and on-chain registration
-- 🤝 **Agent Communication**: Agents can communicate via AIP protocol
-- 🌐 **A2A Protocol**: Standard Agent-to-Agent communication with external agents
-- ⚡ **Zero Redundancy**: Leverages Unibase AIP SDK for platform communication
-- 📐 **Type Standardization**: A2A Protocol types as canonical standard for tasks, skills, and messages
+Framework for building A2A-compatible AI agents.
 
 ## Installation
 
 ```bash
-# Basic installation (includes AIP SDK dependency)
-pip install unibase-agent-framework
-
-# With Claude support
-pip install unibase-agent-framework[claude]
-
-# With all AI SDKs
-pip install unibase-agent-framework[all]
-
-# Development installation
-pip install -e ".[dev]"
+pip install unibase-agent-sdk
 ```
-
-**Important Notes**:
-- The framework uses the **Unibase AIP SDK** for agent registration and platform communication
-- **A2A Protocol types** are the canonical standard for tasks, skills, and messages (see [TYPE_STANDARDIZATION.md](TYPE_STANDARDIZATION.md))
 
 ## Quick Start
 
+### Expose a Function as an Agent
+
 ```python
-import asyncio
+from unibase_agent_sdk import expose_as_a2a
+
+def calculator(expression: str) -> str:
+    result = eval(expression, {"__builtins__": {}}, {})
+    return f"Result: {result}"
+
+server = expose_as_a2a(
+    name="Calculator",
+    handler=calculator,
+    description="Evaluates math expressions",
+    port=8100
+)
+server.run_sync()
+```
+
+Your agent is now accessible at `http://localhost:8100` with A2A endpoints.
+
+### Async Handlers
+
+```python
+async def llm_handler(prompt: str) -> str:
+    response = await openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+server = expose_as_a2a(
+    name="LLM Agent",
+    handler=llm_handler,
+    port=8100
+)
+await server.run()
+```
+
+### Streaming Responses
+
+```python
+from typing import AsyncIterator
+
+async def streaming_handler(text: str) -> AsyncIterator[str]:
+    for word in text.split():
+        yield word + " "
+        await asyncio.sleep(0.1)
+
+server = expose_as_a2a(
+    name="Streaming Agent",
+    handler=streaming_handler,
+    streaming=True,
+    port=8100
+)
+```
+
+## Features
+
+- **Zero Boilerplate** - Wrap any function as an A2A agent
+- **A2A Protocol** - Full JSON-RPC 2.0 implementation
+- **Streaming** - Server-Sent Events for real-time responses
+- **Platform Integration** - Auto-register with Unibase AIP
+- **Framework Agnostic** - Works with any Python code
+
+## Wrapping Agents
+
+### Wrap a Class
+
+```python
+from unibase_agent_sdk import wrap_agent
+
+class MyAgent:
+    def process(self, text: str) -> str:
+        return text.upper()
+
+    def analyze(self, data: dict) -> dict:
+        return {"count": len(data)}
+
+agent = MyAgent()
+
+# Single method
+wrapper = wrap_agent(agent, "MyAgent", method="process")
+
+# Multiple methods as skills
+wrapper = wrap_agent(agent, "MyAgent", methods=["process", "analyze"])
+
+wrapper.serve_sync(port=8100)
+```
+
+### AgentWrapper Class
+
+```python
+from unibase_agent_sdk import AgentWrapper
+
+class CustomAgent:
+    async def run(self, input: str) -> str:
+        return f"Processed: {input}"
+
+agent = CustomAgent()
+wrapper = AgentWrapper(
+    agent=agent,
+    name="Custom Agent",
+    method_map={"default": "run"}
+)
+
+await wrapper.serve(port=8100)
+```
+
+## A2A Server
+
+For more control, use `A2AServer` directly:
+
+```python
+from unibase_agent_sdk import A2AServer, StreamResponse
+from a2a.types import AgentCard, AgentSkill, AgentCapabilities, Task, Message
+
+async def handle_task(task: Task, message: Message):
+    text = message.parts[0].text
+    response_msg = create_text_message("Processed: " + text, Role.agent)
+    yield StreamResponse(message=response_msg)
+
+agent_card = AgentCard(
+    name="My Agent",
+    description="Does things",
+    url="http://localhost:8100",
+    version="1.0.0",
+    skills=[
+        AgentSkill(
+            id="process",
+            name="Process",
+            description="Processes text",
+            tags=["text"]
+        )
+    ],
+    capabilities=AgentCapabilities(streaming=True),
+    default_input_modes=["text/plain"],
+    default_output_modes=["text/plain"],
+)
+
+server = A2AServer(
+    agent_card=agent_card,
+    task_handler=handle_task,
+    host="0.0.0.0",
+    port=8100
+)
+
+await server.run()
+```
+
+## A2A Client
+
+Consume other A2A agents:
+
+```python
+from unibase_agent_sdk import A2AClient
+
+async with A2AClient() as client:
+    # Discover agent
+    agent = await client.discover("http://localhost:8100")
+    print(agent.name, agent.skills)
+
+    # Execute task
+    result = await client.execute(
+        agent_url="http://localhost:8100",
+        message="Calculate 2 + 2"
+    )
+    print(result)
+
+    # Stream execution
+    async for response in client.stream(
+        agent_url="http://localhost:8100",
+        message="Analyze this data"
+    ):
+        print(response)
+```
+
+## Platform Registration
+
+Register your agent with the AIP platform:
+
+```python
+from unibase_agent_sdk import expose_as_a2a, RegistrationMode
+
+server = expose_as_a2a(
+    name="My Agent",
+    handler=my_handler,
+    port=8100,
+    register=True,  # Enable registration
+    registration_mode=RegistrationMode.DIRECT,  # or GATEWAY
+    platform_url="http://localhost:8001",
+    gateway_url="http://localhost:8080",
+)
+```
+
+### Registration Modes
+
+| Mode | Use Case |
+|------|----------|
+| `DIRECT` | Agent is publicly accessible |
+| `GATEWAY` | Agent behind NAT/firewall, uses gateway routing |
+
+## Agent Registry Client
+
+For programmatic platform interaction:
+
+```python
+from unibase_agent_sdk import AgentRegistry
+
+registry = AgentRegistry(
+    platform_url="http://localhost:8001",
+    gateway_url="http://localhost:8080"
+)
+
+# Register agent
+await registry.register(
+    agent_id="my.agent",
+    name="My Agent",
+    url="http://localhost:8100"
+)
+
+# Discover agents
+agents = await registry.list_agents()
+
+# Call another agent
+result = await registry.call_agent(
+    agent_id="other.agent",
+    message="Hello"
+)
+```
+
+## A2A Protocol Endpoints
+
+When you expose an agent, these endpoints are available:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/.well-known/agent.json` | GET | Agent Card (discovery) |
+| `/a2a` | POST | Execute task (JSON-RPC) |
+| `/a2a/stream` | POST | Stream task (SSE) |
+| `/health` | GET | Health check |
+
+## Types
+
+```python
 from unibase_agent_sdk import (
-    AgentRegistry,
-    MemoryManager,
-    ClaudeAdapter,
-    AgentType
-)
+    # Agent types
+    AgentType,        # AIP, CLAUDE, LANGCHAIN, OPENAI, CUSTOM
+    AgentIdentity,    # Agent identity metadata
 
-async def main():
-    # 1. Create Registry
-    registry = AgentRegistry(
-        aip_endpoint="https://aip.unibase.io",
-        membase_endpoint="https://membase.unibase.io"
-    )
-    
-    # 2. Register Agent
-    identity = await registry.register_agent(
-        name="my-agent",
-        agent_type=AgentType.CLAUDE,
-        auto_create_wallet=True
-    )
-    
-    # 3. Create Memory Manager
-    memory = MemoryManager(
-        membase_endpoint="https://membase.unibase.io",
-        da_endpoint="https://da.unibase.io",
-        agent_id=identity.agent_id
-    )
-    
-    # 4. Create Agent
-    agent = ClaudeAdapter(
-        identity=identity,
-        registry=registry,
-        memory_manager=memory
-    )
-    await agent.initialize(api_key="sk-xxx")
-    
-    # 5. Use Native API (transparent!)
-    response = await agent.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        messages=[{"role": "user", "content": "Hello!"}]
-    )
-    print(response.content[0].text)
-    
-    # 6. Upload Memory to DA
-    await memory.upload_to_da()
-    
-    await registry.close()
+    # A2A
+    A2AServer,        # Server implementation
+    A2AClient,        # Client implementation
+    StreamResponse,   # Streaming response wrapper
 
-asyncio.run(main())
-```
+    # Wrappers
+    expose_as_a2a,    # Function wrapper
+    wrap_agent,       # Class wrapper
+    AgentWrapper,     # Manual wrapper
 
-## Architecture
-
-```
-unibase_agent_sdk/
-├── core/           # Base classes and types
-├── registry/       # Agent registry, identity, wallet (uses AIP SDK for auth)
-├── agents/         # Framework wrappers (CrewAI, AutoGen, Phidata, LlamaIndex)
-├── memory/         # Memory management and middlewares
-├── adapters/       # LLM adapters (Claude, OpenAI, LangChain)
-├── a2a/            # A2A Protocol implementation
-└── utils/          # Configuration and logging
-```
-
-### Dependencies
-
-- **Unibase AIP SDK** (`aip.sdk`): Handles agent registration, discovery, and platform communication
-- **httpx**: Direct HTTP communication for Membase and other services
-- **pydantic**: Data validation and settings management
-
-## Memory Middlewares
-
-Add intelligent memory using various providers:
-
-```python
-from unibase_agent_sdk.memory.middlewares import Mem0Middleware
-
-# Add mem0 for semantic memory
-mem0 = Mem0Middleware(agent_id=identity.agent_id)
-await mem0.initialize()
-memory_manager.add_middleware(mem0)
-
-# Use native mem0 API!
-mem0.add("User prefers dark mode", user_id=identity.agent_id)
-```
-
-## Agent Communication
-
-Agents can communicate via AIP protocol:
-
-```python
-# Alice sends message to Bob
-response = await alice.send_to_agent(
-    to_agent_id=bob.agent_id,
-    message={"type": "question", "content": "Hello!"}
+    # Platform
+    AgentRegistry,    # Registry client
+    RegistrationMode, # DIRECT or GATEWAY
 )
 ```
 
-## A2A Protocol Support
-
-Communicate with external agents using the standard [A2A protocol](https://a2a-protocol.org):
+## Error Handling
 
 ```python
-from unibase_agent_sdk.a2a import A2AServer, Message, AgentCard
+from unibase_agent_sdk import (
+    UnibaseError,         # Base exception
+    ConfigurationError,
+    InitializationError,
+    RegistryError,
+    AgentNotFoundError,
+    A2AProtocolError,
+    AgentDiscoveryError,
+    TaskExecutionError,
+)
 
-# Discover external A2A agents
-card = await registry.discover_a2a_agent("https://agent.example.com")
-print(f"Found: {card.name} with skills: {[s.name for s in card.skills]}")
-
-# Send tasks to A2A agents
-message = Message.user("What's the weather?")
-task = await registry.send_a2a_task("https://agent.example.com", message)
-
-# Expose your agent as A2A server
-# Use your agent's public URL (from config or environment)
-import os
-agent_url = os.environ.get("AGENT_ENDPOINT_URL", "http://localhost:8000")
-agent_card = registry.generate_agent_card_for(identity.agent_id, agent_url)
-server = A2AServer(agent_card=agent_card, task_handler=my_handler)
-await server.run()  # Serves /.well-known/agent.json
+try:
+    result = await client.execute(agent_url, message)
+except AgentDiscoveryError:
+    print("Could not discover agent")
+except TaskExecutionError as e:
+    print(f"Task failed: {e}")
 ```
 
 ## Examples
 
-See the `examples/` directory for complete examples:
+See the `examples/` directory:
 
-### Framework Examples
-- `basic_agent_registration.py` - Basic registration workflow
-- `agent_with_mem0.py` - Using mem0 memory
-- `agent_with_langchain_memory.py` - Using LangChain memory
-- `multi_middleware_agent.py` - Multi-agent collaboration
-- `full_workflow.py` - Agent communication
-- `a2a_agent_example.py` - A2A protocol server/client
-
-### AIP-Compatible Agents (`examples/aip_agents/`)
-Production-ready example agents compatible with Unibase AIP:
-
-- **Weather Agent** 🌤️ - Weather forecasting with A2A protocol support
-- **Research Agent** 🔍 - Topic research with structured findings
-- **Travel Agent** ✈️ - Travel planning with itinerary generation
-- **Calculator Agent** 🔢 - Mathematical computation and evaluation
-
-Run individual agents or launch all together:
-```bash
-# Run single agent
-python examples/aip_agents/weather_agent.py
-
-# Run all agents
-python examples/aip_agents/launch_all_agents.py
-```
-
-Each agent runs as a standalone A2A server and can be discovered via `/.well-known/agent.json`. See [examples/aip_agents/README.md](examples/aip_agents/README.md) for details.
+- `wrap_any_agent.py` - Wrapping functions and classes
+- `streaming_agent.py` - Streaming responses
+- `a2a_client.py` - Consuming agents
+- `agent_registration_direct_mode.py` - Platform registration
 
 ## License
 
-MIT License
+MIT
