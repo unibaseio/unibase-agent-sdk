@@ -3,6 +3,7 @@
 from typing import (
     Any,
     Callable,
+    Dict,
     Optional,
     List,
     AsyncIterator,
@@ -29,6 +30,9 @@ from a2a.client.helpers import create_text_message_object
 from unibase_agent_sdk.a2a.server import A2AServer
 from unibase_agent_sdk.a2a.types import StreamResponse
 from unibase_agent_sdk.utils.logger import get_logger
+
+# Import CostModel from SDK
+from aip_sdk.types import CostModel
 
 logger = get_logger("wrappers.generic")
 
@@ -110,9 +114,41 @@ def expose_as_a2a(
     aip_endpoint: str = None,
     handle: str = None,
     auto_register: bool = True,
+    # Pricing via cost_model
+    cost_model: CostModel = None,
+    currency: str = "USD",
     **kwargs,
 ) -> A2AServer:
-    """Expose ANY callable as an A2A-compatible agent service."""
+    """Expose ANY callable as an A2A-compatible agent service.
+
+    Args:
+        name: Agent name
+        handler: The callable to expose (sync or async function)
+        port: Port to listen on (default: 8000)
+        host: Host to bind to (default: 0.0.0.0)
+        description: Agent description
+        skills: List of AgentSkill definitions
+        streaming: Enable streaming responses
+        version: Agent version string
+        user_id: AIP platform user ID for registration
+        aip_endpoint: AIP platform endpoint URL
+        handle: Agent handle (auto-generated from name if not provided)
+        auto_register: Whether to auto-register with AIP platform
+        cost_model: Pricing model (use CostModel(base_call_fee=0.05) for $0.05/call)
+        currency: Currency for pricing (default: USD)
+        **kwargs: Additional arguments passed to AgentCard
+
+    Returns:
+        A2AServer instance ready to run
+
+    Example:
+        server = expose_as_a2a(
+            "Calculator",
+            my_handler,
+            cost_model=CostModel(base_call_fee=0.05),  # $0.05 per call
+            user_id="user:0x123...",
+        )
+    """
     # Create default description
     if description is None:
         description = f"{name} agent"
@@ -153,6 +189,9 @@ def expose_as_a2a(
     resolved_user_id = user_id or os.getenv("AIP_USER_ID")
     resolved_aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
 
+    # Use default cost_model if not provided
+    resolved_cost_model = cost_model or CostModel(base_call_fee=0.001)
+
     # Create registration config if user_id is provided
     registration_config = None
     if resolved_user_id and auto_register:
@@ -163,6 +202,8 @@ def expose_as_a2a(
             "name": name,
             "description": description,
             "skills": [{"id": s.id, "name": s.name, "description": s.description} for s in skills],
+            "cost_model": resolved_cost_model.to_dict(),
+            "currency": currency,
         }
 
     # Create and return server

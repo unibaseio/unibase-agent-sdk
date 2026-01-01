@@ -11,7 +11,7 @@ from ..utils.logger import get_logger
 import httpx
 
 # Import AIP SDK for agent registration and platform communication
-from aip_sdk import AsyncAIPClient, AgentConfig as AIPAgentConfig, SkillConfig
+from aip_sdk import AsyncAIPClient, AgentConfig as AIPAgentConfig, SkillConfig, CostModel
 from aip_sdk.exceptions import AIPError, RegistrationError as AIPRegistrationError
 from aip_sdk.gateway import GatewayClient
 
@@ -111,15 +111,43 @@ class AgentRegistryClient:
         wallet_address: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         user_id: str = "system",
-        force: bool = False
+        force: bool = False,
+        cost_model: Optional[CostModel] = None,
+        currency: str = "USD",
     ) -> AgentIdentity:
-        """Register a new agent."""
+        """Register a new agent.
+
+        Args:
+            name: Agent name
+            agent_type: Type of agent (AIP, LANGCHAIN, etc.)
+            wallet_address: Optional wallet address for the agent
+            metadata: Additional metadata (description, handle, capabilities, etc.)
+            user_id: User ID registering the agent (default: "system")
+            force: Force re-registration if agent exists
+            cost_model: Pricing model (use CostModel(base_call_fee=0.05) for $0.05/call)
+            currency: Currency for pricing (default: USD)
+
+        Returns:
+            AgentIdentity with registration details
+
+        Example:
+            identity = await registry.register_agent(
+                name="MyAgent",
+                agent_type=AgentType.AIP,
+                cost_model=CostModel(base_call_fee=0.05),  # $0.05 per call
+            )
+        """
+        # Use default cost_model if not provided
+        resolved_cost_model = cost_model or CostModel(base_call_fee=0.001)
+
         # 1. Create AIP AgentConfig (used for both modes)
         agent_config = AIPAgentConfig(
             name=name,
             description=metadata.get("description", "") if metadata else "",
             handle=metadata.get("handle", name.lower().replace(" ", "_")) if metadata else name.lower().replace(" ", "_"),
             capabilities=metadata.get("capabilities", []) if metadata else [],
+            cost_model=resolved_cost_model,
+            currency=currency,
             metadata={
                 "agent_type": agent_type.value,
                 "wallet_address": wallet_address,

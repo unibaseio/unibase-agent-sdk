@@ -6,7 +6,7 @@ from aip_sdk.exceptions import (
     AuthenticationError as AIPAuthenticationError,
     RegistrationError as AIPRegistrationError,
     ValidationError,
-    AgentNotFoundError as AIPAgentNotFoundError,
+    AgentNotFoundError,  # Re-export directly from aip_sdk
 )
 
 
@@ -36,15 +36,6 @@ class RegistryError(UnibaseError):
 
     def __init__(self, message: str = "Registry error", code: str = "REGISTRY_ERROR", **kwargs):
         super().__init__(message, code=code, **kwargs)
-
-
-class AgentNotFoundError(RegistryError):
-    """Raised when an agent cannot be found in the registry."""
-
-    def __init__(self, agent_id: str, **kwargs):
-        self.agent_id = agent_id
-        super().__init__(f"Agent not found: {agent_id}", code="AGENT_NOT_FOUND", **kwargs)
-        self.details["agent_id"] = agent_id
 
 
 class MemoryError(UnibaseError):
