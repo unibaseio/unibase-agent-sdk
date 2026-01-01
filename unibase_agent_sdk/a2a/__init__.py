@@ -1,45 +1,30 @@
 """A2A Protocol support for Unibase Agent Framework."""
 
-from .types import (
-    TaskState,
-    TaskStatus,
-    Task,
-    Message,
-    Role,
-    Part,
-    TextPart,
-    FilePart,
-    DataPart,
-    Artifact,
-    Skill,
-    AgentCard,
-    Capability,
-    PushNotificationConfig,
-    StreamResponse,
-)
-from .server import A2AServer
-from .client import A2AClient
-from .agent_card import generate_agent_card
+# Unibase A2A extensions
+from .types import StreamResponse, A2AErrorCode
+
+# Unibase A2A server
+from .server import A2AServer, create_simple_handler, create_async_handler
+
+# Unibase A2A client
+from .client import A2AClient, AgentDiscoveryError, TaskExecutionError
+
+# Agent card generator utility
+from .agent_card import generate_agent_card, agent_card_from_metadata
 
 __all__ = [
-    # Types
-    "TaskState",
-    "TaskStatus",
-    "Task",
-    "Message",
-    "Role",
-    "Part",
-    "TextPart",
-    "FilePart",
-    "DataPart",
-    "Artifact",
-    "Skill",
-    "AgentCard",
-    "Capability",
-    "PushNotificationConfig",
+    # Unibase extensions
     "StreamResponse",
-    # Server/Client
+    "A2AErrorCode",
+    # Server
     "A2AServer",
+    "create_simple_handler",
+    "create_async_handler",
+    # Client
     "A2AClient",
+    "AgentDiscoveryError",
+    "TaskExecutionError",
+    # Utilities
     "generate_agent_card",
+    "agent_card_from_metadata",
 ]

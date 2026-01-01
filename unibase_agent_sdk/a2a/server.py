@@ -1,17 +1,6 @@
-"""A2A Protocol Server.
+"""A2A Protocol Server."""
 
-FastAPI-based server implementing the A2A protocol specification,
-enabling agents to be discovered and communicated with via standard
-A2A mechanisms (JSON-RPC 2.0 over HTTP).
-
-Features:
-- Agent Card endpoint at /.well-known/agent.json
-- JSON-RPC 2.0 endpoint at /a2a
-- Streaming support via Server-Sent Events (SSE)
-- Task lifecycle management
-"""
-
-from typing import Optional, Callable, AsyncIterator, Dict, Any, Union
+from typing import Optional, Callable, AsyncIterator, Dict, Any
 from contextlib import asynccontextmanager
 import json
 import asyncio
@@ -22,43 +11,25 @@ from ..utils.logger import get_logger
 
 logger = get_logger("a2a.server")
 
-from .types import (
+# Import directly from Google A2A SDK
+from a2a.types import (
     AgentCard,
     Task,
     TaskState,
     TaskStatus,
     Message,
-    StreamResponse,
-    JSONRPCRequest,
-    JSONRPCResponse,
-    JSONRPCError,
-    A2AErrorCode,
+    TextPart,
+    Role,
 )
+from a2a.utils.message import get_message_text
+from a2a.client.helpers import create_text_message_object
+
+# Import Unibase extensions
+from .types import StreamResponse, A2AErrorCode
 
 
 class A2AServer:
-    """A2A-compliant server for exposing Unibase agents.
-
-    This server implements the A2A protocol specification, allowing
-    any Unibase agent to be discovered and communicated with by
-    standard A2A clients.
-
-    Example:
-        >>> from unibase_agent_sdk.a2a import A2AServer, AgentCard, Message
-        >>>
-        >>> async def handle_task(task: Task, message: Message):
-        ...     # Process the message and yield responses
-        ...     yield StreamResponse(message=Message.agent("Hello!"))
-        >>>
-        >>> card = AgentCard(
-        ...     name="My Agent",
-        ...     description="A helpful AI agent",
-        ...     url="http://my-agent.example.com:8000"  # Your agent's public URL
-        ... )
-        >>>
-        >>> server = A2AServer(agent_card=card, task_handler=handle_task)
-        >>> await server.run()
-    """
+    """A2A-compliant server for exposing Unibase agents."""
 
     def __init__(
         self,
@@ -68,17 +39,7 @@ class A2AServer:
         port: int = 8000,
         registration_config: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize A2A server.
-
-        Args:
-            agent_card: Agent Card describing this agent
-            task_handler: Async generator function that processes tasks
-            host: Host to bind the server to
-            port: Port to listen on
-            registration_config: Optional config for AIP platform registration.
-                                 If provided, agent will be registered on startup.
-                                 Keys: user_id, aip_endpoint, handle, name, description, skills
-        """
+        """Initialize A2A server."""
         self.agent_card = agent_card
         self.task_handler = task_handler
         self.host = host
@@ -94,7 +55,19 @@ class A2AServer:
 
         # Create FastAPI app
         self._app = None
-    
+
+    def _serialize_agent_card(self) -> Dict[str, Any]:
+        """Serialize agent card to dict using Pydantic."""
+        return self.agent_card.model_dump(by_alias=True, exclude_none=True)
+
+    def _serialize_task(self, task: Task) -> Dict[str, Any]:
+        """Serialize task to dict using Pydantic."""
+        return task.model_dump(by_alias=True, exclude_none=True)
+
+    def _parse_message(self, message_data: Dict[str, Any]) -> Message:
+        """Parse message from dict using Pydantic."""
+        return Message.model_validate(message_data)
+
     def create_app(self):
         """Create and configure the FastAPI application."""
         try:
@@ -106,7 +79,7 @@ class A2AServer:
                 "FastAPI is required for A2A server. "
                 "Install it with: pip install fastapi uvicorn"
             )
-        
+
         @asynccontextmanager
         async def lifespan(app):
             logger.info(f"A2A Server starting at http://{self.host}:{self.port}")
@@ -122,14 +95,14 @@ class A2AServer:
             if self._aip_client:
                 await self._aip_client.close()
             logger.info("A2A Server shutting down")
-        
+
         app = FastAPI(
             title=self.agent_card.name,
             description=self.agent_card.description,
             version=self.agent_card.version,
             lifespan=lifespan
         )
-        
+
         # CORS middleware
         app.add_middleware(
             CORSMiddleware,
@@ -138,89 +111,100 @@ class A2AServer:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        
+
         # Agent Card endpoint
         @app.get("/.well-known/agent.json")
         async def get_agent_card():
-            return JSONResponse(content=self.agent_card.to_dict())
-        
+            return JSONResponse(content=self._serialize_agent_card())
+
         # JSON-RPC endpoint
         @app.post("/a2a")
         async def jsonrpc_endpoint(request: Request):
             try:
                 body = await request.json()
-                rpc_request = JSONRPCRequest.from_dict(body)
-                
+                rpc_request = self._parse_jsonrpc_request(body)
+
                 # Route to appropriate handler
-                result = await self._handle_jsonrpc(rpc_request)
-                
-                return JSONResponse(content=result.to_dict())
-                
+                result = await self._handle_jsonrpc(rpc_request, body.get("id"))
+
+                return JSONResponse(content=result)
+
             except json.JSONDecodeError:
-                error = JSONRPCError(
-                    code=A2AErrorCode.PARSE_ERROR,
-                    message="Invalid JSON"
-                )
-                return JSONResponse(
-                    content=JSONRPCResponse(id=None, error=error).to_dict(),
-                    status_code=400
-                )
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": A2AErrorCode.PARSE_ERROR, "message": "Invalid JSON"}
+                }
+                return JSONResponse(content=error_response, status_code=400)
             except Exception as e:
-                error = JSONRPCError(
-                    code=A2AErrorCode.INTERNAL_ERROR,
-                    message=str(e)
-                )
-                return JSONResponse(
-                    content=JSONRPCResponse(id=None, error=error).to_dict(),
-                    status_code=500
-                )
-        
+                logger.exception(f"Error handling JSON-RPC request: {e}")
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": A2AErrorCode.INTERNAL_ERROR, "message": str(e)}
+                }
+                return JSONResponse(content=error_response, status_code=500)
+
         # Streaming endpoint using SSE
         @app.post("/a2a/stream")
         async def stream_endpoint(request: Request):
             try:
                 body = await request.json()
-                rpc_request = JSONRPCRequest.from_dict(body)
-                
-                if rpc_request.method != "message/stream":
-                    error = JSONRPCError(
-                        code=A2AErrorCode.METHOD_NOT_FOUND,
-                        message="Streaming only supports message/stream"
-                    )
-                    return JSONResponse(
-                        content=JSONRPCResponse(id=rpc_request.id, error=error).to_dict(),
-                        status_code=400
-                    )
-                
+                rpc_request = self._parse_jsonrpc_request(body)
+
+                if rpc_request["method"] != "message/stream":
+                    error_response = {
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "error": {"code": A2AErrorCode.METHOD_NOT_FOUND, "message": "Streaming only supports message/stream"}
+                    }
+                    return JSONResponse(content=error_response, status_code=400)
+
                 async def event_generator():
-                    async for response in self._handle_message_stream(rpc_request):
-                        data = json.dumps(response.to_dict())
+                    async for response in self._handle_message_stream(rpc_request, body.get("id")):
+                        data = json.dumps(response)
                         yield f"data: {data}\n\n"
-                
+
                 return StreamingResponse(
                     event_generator(),
                     media_type="text/event-stream"
                 )
-                
+
             except Exception as e:
-                error = JSONRPCError(
-                    code=A2AErrorCode.INTERNAL_ERROR,
-                    message=str(e)
-                )
-                return JSONResponse(
-                    content=JSONRPCResponse(id=None, error=error).to_dict(),
-                    status_code=500
-                )
-        
+                logger.exception(f"Error in stream endpoint: {e}")
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": A2AErrorCode.INTERNAL_ERROR, "message": str(e)}
+                }
+                return JSONResponse(content=error_response, status_code=500)
+
         # Health check
         @app.get("/health")
         async def health_check():
             return {"status": "healthy", "agent": self.agent_card.name}
-        
+
+        # Health check (alternative endpoint for gateway compatibility)
+        @app.get("/healthz")
+        async def healthz_check():
+            return {"status": "healthy", "agent": self.agent_card.name}
+
         self._app = app
         return app
-    
-    async def _handle_jsonrpc(self, request: JSONRPCRequest) -> JSONRPCResponse:
+
+    def _parse_jsonrpc_request(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse and validate JSON-RPC request."""
+        if body.get("jsonrpc") != "2.0":
+            raise ValueError("Invalid JSON-RPC version")
+        if "method" not in body:
+            raise ValueError("Missing method")
+        return {
+            "method": body["method"],
+            "params": body.get("params", {}),
+            "id": body.get("id"),
+        }
+
+    async def _handle_jsonrpc(self, request: Dict[str, Any], request_id: Any) -> Dict[str, Any]:
         """Handle JSON-RPC request and return response."""
         method_handlers = {
             "message/send": self._handle_message_send,
@@ -228,144 +212,261 @@ class A2AServer:
             "tasks/list": self._handle_tasks_list,
             "tasks/cancel": self._handle_tasks_cancel,
         }
-        
-        handler = method_handlers.get(request.method)
+
+        handler = method_handlers.get(request["method"])
         if not handler:
-            return JSONRPCResponse(
-                id=request.id,
-                error=JSONRPCError(
-                    code=A2AErrorCode.METHOD_NOT_FOUND,
-                    message=f"Method not found: {request.method}"
-                )
-            )
-        
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": A2AErrorCode.METHOD_NOT_FOUND, "message": f"Method not found: {request['method']}"}
+            }
+
         try:
-            result = await handler(request.params)
-            return JSONRPCResponse(id=request.id, result=result)
+            result = await handler(request["params"])
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result
+            }
+        except TaskExecutionError as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": A2AErrorCode.TASK_NOT_FOUND, "message": str(e)}
+            }
         except Exception as e:
-            return JSONRPCResponse(
-                id=request.id,
-                error=JSONRPCError(
-                    code=A2AErrorCode.INTERNAL_ERROR,
-                    message=str(e)
-                )
-            )
-    
+            logger.exception(f"Error handling {request['method']}: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": A2AErrorCode.INTERNAL_ERROR, "message": str(e)}
+            }
+
     async def _handle_message_send(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle message/send method."""
-        # Parse message
+        # Parse message from params
         message_data = params.get("message", {})
-        message = Message.from_dict(message_data)
-        
+        message = self._parse_message(message_data)
+
         # Get or create task
-        task_id = params.get("id")
-        if task_id and task_id in self._tasks:
+        task_id = params.get("id") or str(uuid.uuid4())
+        context_id = params.get("contextId") or str(uuid.uuid4())
+
+        if task_id in self._tasks:
             task = self._tasks[task_id]
-            task.history.append(message)
+            # Add message to history
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=task.status,
+                history=list(task.history or []) + [message],
+                artifacts=task.artifacts,
+                metadata=task.metadata,
+            )
         else:
-            task = Task.create(message)
-            task_id = task.id
-            self._tasks[task_id] = task
-        
+            task = Task(
+                id=task_id,
+                context_id=context_id,
+                status=TaskStatus(state=TaskState.submitted),
+                history=[message],
+            )
+
+        self._tasks[task_id] = task
+
         # Update task status to working
-        task.status = TaskStatus(state=TaskState.WORKING)
-        
+        task = Task(
+            id=task.id,
+            context_id=task.context_id,
+            status=TaskStatus(state=TaskState.working),
+            history=task.history,
+            artifacts=task.artifacts,
+            metadata=task.metadata,
+        )
+        self._tasks[task_id] = task
+
         # Process the message (collect all stream responses)
         try:
+            history = list(task.history or [])
+            artifacts = list(task.artifacts or [])
+
             async for response in self.task_handler(task, message):
                 if response.message:
-                    task.history.append(response.message)
+                    history.append(response.message)
                 if response.status_update:
-                    task.status = response.status_update.status
+                    task = Task(
+                        id=task.id,
+                        context_id=task.context_id,
+                        status=response.status_update.status,
+                        history=history,
+                        artifacts=artifacts,
+                        metadata=task.metadata,
+                    )
                 if response.artifact_update:
-                    task.artifacts.append(response.artifact_update.artifact)
-            
+                    artifacts.append(response.artifact_update.artifact)
+
             # Mark as completed if not already in terminal state
-            if task.status.state not in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED]:
-                task.status = TaskStatus(state=TaskState.COMPLETED)
-                
-        except Exception as e:
-            task.status = TaskStatus(
-                state=TaskState.FAILED,
-                message=Message.agent(f"Error: {str(e)}")
+            final_state = task.status.state
+            if final_state not in [TaskState.completed, TaskState.failed, TaskState.canceled]:
+                final_state = TaskState.completed
+
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=TaskStatus(state=final_state),
+                history=history,
+                artifacts=artifacts if artifacts else None,
+                metadata=task.metadata,
             )
-        
-        return task.to_dict()
-    
+
+        except Exception as e:
+            logger.exception(f"Error in task handler: {e}")
+            error_message = create_text_message_object(Role.agent, f"Error: {str(e)}")
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=TaskStatus(state=TaskState.failed, message=error_message),
+                history=list(task.history or []),
+                artifacts=task.artifacts,
+                metadata=task.metadata,
+            )
+
+        self._tasks[task_id] = task
+        return self._serialize_task(task)
+
     async def _handle_message_stream(
-        self, 
-        request: JSONRPCRequest
-    ) -> AsyncIterator[JSONRPCResponse]:
+        self,
+        request: Dict[str, Any],
+        request_id: Any
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Handle message/stream method with SSE responses."""
-        params = request.params
+        params = request["params"]
         message_data = params.get("message", {})
-        message = Message.from_dict(message_data)
-        
+        message = self._parse_message(message_data)
+
         # Get or create task
-        task_id = params.get("id")
-        if task_id and task_id in self._tasks:
+        task_id = params.get("id") or str(uuid.uuid4())
+        context_id = params.get("contextId") or str(uuid.uuid4())
+
+        if task_id in self._tasks:
             task = self._tasks[task_id]
-            task.history.append(message)
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=task.status,
+                history=list(task.history or []) + [message],
+                artifacts=task.artifacts,
+                metadata=task.metadata,
+            )
         else:
-            task = Task.create(message)
-            task_id = task.id
-            self._tasks[task_id] = task
-        
-        # Update task status
-        task.status = TaskStatus(state=TaskState.WORKING)
-        
+            task = Task(
+                id=task_id,
+                context_id=context_id,
+                status=TaskStatus(state=TaskState.submitted),
+                history=[message],
+            )
+
+        self._tasks[task_id] = task
+
+        # Update task status to working
+        task = Task(
+            id=task.id,
+            context_id=task.context_id,
+            status=TaskStatus(state=TaskState.working),
+            history=task.history,
+            artifacts=task.artifacts,
+            metadata=task.metadata,
+        )
+        self._tasks[task_id] = task
+
         # Stream responses
         try:
+            history = list(task.history or [])
+            artifacts = list(task.artifacts or [])
+
             async for response in self.task_handler(task, message):
-                yield JSONRPCResponse(id=request.id, result=response.to_dict())
-                
+                event = response.get_event()
+                if event:
+                    yield {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": event.model_dump(by_alias=True, exclude_none=True)
+                    }
+
                 # Update task state
                 if response.message:
-                    task.history.append(response.message)
+                    history.append(response.message)
                 if response.status_update:
-                    task.status = response.status_update.status
+                    task = Task(
+                        id=task.id,
+                        context_id=task.context_id,
+                        status=response.status_update.status,
+                        history=history,
+                        artifacts=artifacts if artifacts else None,
+                        metadata=task.metadata,
+                    )
                 if response.artifact_update:
-                    task.artifacts.append(response.artifact_update.artifact)
-            
+                    artifacts.append(response.artifact_update.artifact)
+
             # Final response with completed task
-            if task.status.state not in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED]:
-                task.status = TaskStatus(state=TaskState.COMPLETED)
-            
-            yield JSONRPCResponse(
-                id=request.id,
-                result=StreamResponse(task=task).to_dict()
+            final_state = task.status.state
+            if final_state not in [TaskState.completed, TaskState.failed, TaskState.canceled]:
+                final_state = TaskState.completed
+
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=TaskStatus(state=final_state),
+                history=history,
+                artifacts=artifacts if artifacts else None,
+                metadata=task.metadata,
             )
-            
+            self._tasks[task_id] = task
+
+            yield {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": self._serialize_task(task)
+            }
+
         except Exception as e:
-            task.status = TaskStatus(
-                state=TaskState.FAILED,
-                message=Message.agent(f"Error: {str(e)}")
+            logger.exception(f"Error in stream handler: {e}")
+            error_message = create_text_message_object(Role.agent, f"Error: {str(e)}")
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=TaskStatus(state=TaskState.failed, message=error_message),
+                history=list(task.history or []),
+                artifacts=task.artifacts,
+                metadata=task.metadata,
             )
-            yield JSONRPCResponse(
-                id=request.id,
-                result=StreamResponse(task=task).to_dict()
-            )
-    
+            self._tasks[task_id] = task
+
+            yield {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": self._serialize_task(task)
+            }
+
     async def _handle_tasks_get(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle tasks/get method."""
         task_id = params.get("id")
         if not task_id or task_id not in self._tasks:
             raise TaskExecutionError(f"Task not found: {task_id}")
-        return self._tasks[task_id].to_dict()
-    
+        return self._serialize_task(self._tasks[task_id])
+
     async def _handle_tasks_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle tasks/list method."""
         tasks = list(self._tasks.values())
-        
+
         # Apply filters if provided
         context_id = params.get("contextId")
         if context_id:
             tasks = [t for t in tasks if t.context_id == context_id]
-        
+
         return {
-            "tasks": [t.to_dict() for t in tasks]
+            "tasks": [self._serialize_task(t) for t in tasks]
         }
-    
+
     async def _handle_tasks_cancel(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle tasks/cancel method."""
         task_id = params.get("id")
@@ -375,11 +476,19 @@ class A2AServer:
         task = self._tasks[task_id]
 
         # Can only cancel non-terminal tasks
-        if task.status.state in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED]:
+        if task.status.state in [TaskState.completed, TaskState.failed, TaskState.canceled]:
             raise TaskExecutionError(f"Task {task_id} is already in terminal state")
-        
-        task.status = TaskStatus(state=TaskState.CANCELED)
-        return task.to_dict()
+
+        task = Task(
+            id=task.id,
+            context_id=task.context_id,
+            status=TaskStatus(state=TaskState.canceled),
+            history=task.history,
+            artifacts=task.artifacts,
+            metadata=task.metadata,
+        )
+        self._tasks[task_id] = task
+        return self._serialize_task(task)
 
     async def _register_with_aip(self):
         """Register agent with AIP platform."""
@@ -450,7 +559,7 @@ class A2AServer:
                 "uvicorn is required to run the A2A server. "
                 "Install it with: pip install uvicorn"
             )
-        
+
         app = self.create_app()
         config = uvicorn.Config(
             app,
@@ -460,7 +569,7 @@ class A2AServer:
         )
         server = uvicorn.Server(config)
         await server.serve()
-    
+
     def run_sync(self):
         """Start the A2A server synchronously."""
         asyncio.run(self.run())
@@ -469,54 +578,29 @@ class A2AServer:
 def create_simple_handler(
     response_func: Callable[[str], str]
 ) -> Callable[[Task, Message], AsyncIterator[StreamResponse]]:
-    """Create a simple task handler from a text-to-text function.
-    
-    This helper makes it easy to create A2A agents from simple
-    functions that take a text input and return a text response.
-    
-    Args:
-        response_func: Function that takes input text and returns response text
-    
-    Returns:
-        Task handler suitable for A2AServer
-        
-    Example:
-        >>> def echo(text):
-        ...     return f"You said: {text}"
-        >>> 
-        >>> handler = create_simple_handler(echo)
-        >>> server = A2AServer(agent_card=card, task_handler=handler)
-    """
+    """Create a simple task handler from a text-to-text function."""
     async def handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        # Extract text from message
-        input_text = ""
-        for part in message.parts:
-            if hasattr(part, "text"):
-                input_text += part.text
-        
+        # Extract text from message using Google A2A utility
+        input_text = get_message_text(message)
+
         # Generate response
         response_text = response_func(input_text)
-        
-        # Yield response message
-        yield StreamResponse(message=Message.agent(response_text))
-    
+
+        # Yield response message using Google A2A helper
+        response_msg = create_text_message_object(Role.agent, response_text)
+        yield StreamResponse(message=response_msg)
+
     return handler
 
 
 def create_async_handler(
     response_func: Callable[[str], Any]
 ) -> Callable[[Task, Message], AsyncIterator[StreamResponse]]:
-    """Create a task handler from an async text-to-text function.
-    
-    Similar to create_simple_handler but for async functions.
-    """
+    """Create a task handler from an async text-to-text function."""
     async def handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        input_text = ""
-        for part in message.parts:
-            if hasattr(part, "text"):
-                input_text += part.text
-        
+        input_text = get_message_text(message)
         response_text = await response_func(input_text)
-        yield StreamResponse(message=Message.agent(response_text))
-    
+        response_msg = create_text_message_object(Role.agent, response_text)
+        yield StreamResponse(message=response_msg)
+
     return handler

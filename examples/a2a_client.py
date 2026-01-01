@@ -15,7 +15,8 @@ import asyncio
 import argparse
 import os
 
-from unibase_agent_sdk import A2AClient, Message
+from unibase_agent_sdk.a2a import A2AClient
+from a2a.types import Message
 
 
 async def discover_agent(client: A2AClient, agent_url: str):

@@ -1,96 +1,33 @@
-"""
-Generic Agent Wrapper
-
-Provides utilities to wrap ANY agent/callable as an A2A-compatible service.
-No framework-specific code required.
-
-Usage Examples:
-
-1. Simple function (standalone, no account):
-    ```python
-    from unibase_agent_sdk import expose_as_a2a
-
-    def echo(text: str) -> str:
-        return f"Echo: {text}"
-
-    server = expose_as_a2a("EchoAgent", echo, port=8100)
-    await server.run()
-    ```
-
-2. With account registration (connects to AIP platform):
-    ```python
-    server = expose_as_a2a(
-        "MyAgent",
-        handler,
-        port=8100,
-        # Account integration
-        user_id="user:0x1234...",
-        # aip_endpoint auto-detected from AIP_ENVIRONMENT config
-    )
-    await server.run()  # Registers agent on startup
-    ```
-
-3. Async function:
-    ```python
-    async def process(text: str) -> str:
-        result = await some_llm_call(text)
-        return result
-
-    server = expose_as_a2a("ProcessorAgent", process, port=8100)
-    await server.run()
-    ```
-
-4. Existing agent object:
-    ```python
-    from langchain.agents import AgentExecutor
-
-    agent = AgentExecutor(...)
-
-    server = expose_as_a2a(
-        "LangChainAgent",
-        lambda text: agent.invoke({"input": text})["output"],
-        port=8100
-    )
-    await server.run()
-    ```
-
-5. Class-based agent with AgentWrapper:
-    ```python
-    class MyAgent:
-        def run(self, text: str) -> str:
-            return f"Result: {text}"
-
-    wrapper = AgentWrapper(
-        agent=MyAgent(),
-        name="MyAgent",
-        method="run",
-    )
-    await wrapper.serve(port=8100)
-    ```
-"""
+"""Generic Agent Wrapper."""
 
 from typing import (
     Any,
     Callable,
     Optional,
     List,
-    Union,
     AsyncIterator,
     Awaitable,
+    Union,
 )
 import asyncio
 import inspect
 import os
 
-from unibase_agent_sdk.a2a.server import A2AServer
-from unibase_agent_sdk.a2a.types import (
+# Import directly from Google A2A SDK
+from a2a.types import (
     AgentCard,
-    Skill,
+    AgentSkill,
+    AgentCapabilities,
     Task,
     Message,
-    StreamResponse,
-    TextPart,
+    Role,
 )
+from a2a.utils.message import get_message_text
+from a2a.client.helpers import create_text_message_object
+
+# Import Unibase extensions
+from unibase_agent_sdk.a2a.server import A2AServer
+from unibase_agent_sdk.a2a.types import StreamResponse
 from unibase_agent_sdk.utils.logger import get_logger
 
 logger = get_logger("wrappers.generic")
@@ -120,17 +57,6 @@ AsyncStreamHandler = Callable[[str], AsyncIterator[str]]
 StreamHandler = Union[SyncStreamHandler, AsyncStreamHandler]
 
 
-def _extract_text(message: Message) -> str:
-    """Extract text content from a Message."""
-    parts = []
-    for part in message.parts:
-        if isinstance(part, TextPart):
-            parts.append(part.text)
-        elif hasattr(part, "text"):
-            parts.append(part.text)
-    return "".join(parts)
-
-
 def _create_task_handler(
     handler: Handler,
     streaming: bool = False,
@@ -140,17 +66,20 @@ def _create_task_handler(
     is_async = asyncio.iscoroutinefunction(handler)
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        input_text = _extract_text(message)
+        # Extract text using Google A2A utility
+        input_text = get_message_text(message)
 
         if streaming:
             # Streaming handler
             if is_async:
                 async for chunk in handler(input_text):
-                    yield StreamResponse(message=Message.agent(chunk))
+                    response_msg = create_text_message_object(Role.agent, chunk)
+                    yield StreamResponse(message=response_msg)
             else:
                 # Sync streaming (returns list)
                 for chunk in handler(input_text):
-                    yield StreamResponse(message=Message.agent(chunk))
+                    response_msg = create_text_message_object(Role.agent, chunk)
+                    yield StreamResponse(message=response_msg)
         else:
             # Non-streaming handler
             if is_async:
@@ -160,7 +89,8 @@ def _create_task_handler(
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, handler, input_text)
 
-            yield StreamResponse(message=Message.agent(str(result)))
+            response_msg = create_text_message_object(Role.agent, str(result))
+            yield StreamResponse(message=response_msg)
 
     return task_handler
 
@@ -172,7 +102,7 @@ def expose_as_a2a(
     port: int = 8000,
     host: str = "0.0.0.0",
     description: str = None,
-    skills: List[Skill] = None,
+    skills: List[AgentSkill] = None,
     streaming: bool = False,
     version: str = "1.0.0",
     # Account integration
@@ -182,65 +112,7 @@ def expose_as_a2a(
     auto_register: bool = True,
     **kwargs,
 ) -> A2AServer:
-    """
-    Expose ANY callable as an A2A-compatible agent service.
-
-    This is the simplest way to create an A2A agent from existing code.
-    Just provide a function that takes text input and returns text output.
-
-    Args:
-        name: Agent name (displayed in Agent Card)
-        handler: Function that processes text input and returns text output.
-                 Can be sync or async.
-        port: Port to run the server on (default: 8000)
-        host: Host to bind to (default: "0.0.0.0")
-        description: Agent description (default: "{name} agent")
-        skills: List of Skill objects describing agent capabilities.
-                If not provided, creates a default skill.
-        streaming: If True, handler should be a generator/async generator
-                   yielding chunks instead of returning a single response.
-        version: Agent version string (default: "1.0.0")
-        user_id: User ID who owns this agent (e.g., "user:0x1234...").
-                 If provided, the agent will be registered with AIP platform.
-                 Can also be set via AIP_USER_ID environment variable.
-        aip_endpoint: AIP platform endpoint URL for agent registration.
-                      Auto-detected from AIP_ENDPOINT env var or deployment config.
-        handle: Agent handle for registration (default: derived from name).
-                The agent will be registered as "erc8004:{handle}".
-        auto_register: If True (default), automatically register with AIP
-                       platform on server startup when user_id is provided.
-        **kwargs: Additional arguments passed to AgentCard
-
-    Returns:
-        A2AServer instance (call .run() or .run_sync() to start)
-
-    Examples:
-        # Simple sync function (standalone, no registration)
-        def greet(name: str) -> str:
-            return f"Hello, {name}!"
-
-        server = expose_as_a2a("Greeter", greet, port=8100)
-        await server.run()
-
-        # With AIP platform registration (aip_endpoint auto-detected)
-        server = expose_as_a2a(
-            "MyAgent",
-            handler,
-            port=8100,
-            user_id="user:0x1234...",
-        )
-        await server.run()  # Registers agent on startup
-
-        # Wrap existing LangChain agent
-        agent = AgentExecutor(...)
-        server = expose_as_a2a(
-            "LangChainBot",
-            lambda text: agent.invoke({"input": text})["output"],
-            port=8100,
-            user_id="user:0x1234...",
-        )
-        await server.run()
-    """
+    """Expose ANY callable as an A2A-compatible agent service."""
     # Create default description
     if description is None:
         description = f"{name} agent"
@@ -249,10 +121,11 @@ def expose_as_a2a(
     if skills is None:
         skill_id = name.lower().replace(" ", "_")
         skills = [
-            Skill(
+            AgentSkill(
                 id=skill_id,
                 name=name,
                 description=description,
+                tags=[],
             )
         ]
 
@@ -260,13 +133,16 @@ def expose_as_a2a(
     if handle is None:
         handle = name.lower().replace(" ", ".").replace("_", ".")
 
-    # Build Agent Card
+    # Build Agent Card with Google A2A types
     agent_card = AgentCard(
         name=name,
         description=description,
         url=f"http://{host}:{port}",
         version=version,
         skills=skills,
+        capabilities=AgentCapabilities(streaming=streaming),
+        default_input_modes=["text/plain", "application/json"],
+        default_output_modes=["text/plain", "application/json"],
         **kwargs,
     )
 
@@ -300,42 +176,7 @@ def expose_as_a2a(
 
 
 class AgentWrapper:
-    """
-    Wrapper for class-based agents.
-
-    Provides more control than expose_as_a2a() for complex agents
-    that need initialization, state, or multiple methods.
-
-    Example:
-        class MyAgent:
-            def __init__(self, model: str):
-                self.llm = LLM(model)
-
-            def chat(self, message: str) -> str:
-                return self.llm.complete(message)
-
-            def summarize(self, text: str) -> str:
-                return self.llm.complete(f"Summarize: {text}")
-
-        # Wrap with specific method
-        wrapper = AgentWrapper(
-            agent=MyAgent("gpt-4"),
-            name="ChatAgent",
-            method="chat",
-        )
-        await wrapper.serve(port=8100)
-
-        # Or use skill routing
-        wrapper = AgentWrapper(
-            agent=MyAgent("gpt-4"),
-            name="MultiSkillAgent",
-            skill_methods={
-                "chat": "chat",
-                "summarize": "summarize",
-            },
-        )
-        await wrapper.serve(port=8100)
-    """
+    """Wrapper for class-based agents."""
 
     def __init__(
         self,
@@ -347,17 +188,7 @@ class AgentWrapper:
         description: str = None,
         version: str = "1.0.0",
     ):
-        """
-        Initialize agent wrapper.
-
-        Args:
-            agent: The agent instance to wrap
-            name: Agent name for the Agent Card
-            method: Single method to use as handler (mutually exclusive with skill_methods)
-            skill_methods: Dict mapping skill IDs to method names for multi-skill agents
-            description: Agent description
-            version: Agent version
-        """
+        """Initialize agent wrapper."""
         self.agent = agent
         self.name = name
         self.description = description or f"{name} agent"
@@ -402,24 +233,26 @@ class AgentWrapper:
                     f"Agent has no method '{method_name}' for skill '{skill_id}'"
                 )
 
-    def _build_skills(self) -> List[Skill]:
-        """Build Skill list from skill_methods."""
+    def _build_skills(self) -> List[AgentSkill]:
+        """Build AgentSkill list from skill_methods."""
         skills = []
         for skill_id, method_name in self.skill_methods.items():
             method = getattr(self.agent, method_name)
             doc = method.__doc__ or f"{method_name} skill"
             skills.append(
-                Skill(
+                AgentSkill(
                     id=skill_id,
                     name=method_name.replace("_", " ").title(),
                     description=doc.strip(),
+                    tags=[],
                 )
             )
         return skills
 
     async def _handle_task(self, task: Task, message: Message) -> AsyncIterator[StreamResponse]:
         """Route task to appropriate method."""
-        input_text = _extract_text(message)
+        # Extract text using Google A2A utility
+        input_text = get_message_text(message)
 
         # For single-skill agents, use the only method
         if len(self.skill_methods) == 1:
@@ -438,7 +271,8 @@ class AgentWrapper:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, method, input_text)
 
-        yield StreamResponse(message=Message.agent(str(result)))
+        response_msg = create_text_message_object(Role.agent, str(result))
+        yield StreamResponse(message=response_msg)
 
     def to_server(self, port: int = 8000, host: str = "0.0.0.0") -> A2AServer:
         """Create an A2AServer for this wrapped agent."""
@@ -448,6 +282,9 @@ class AgentWrapper:
             url=f"http://{host}:{port}",
             version=self.version,
             skills=self._build_skills(),
+            capabilities=AgentCapabilities(),
+            default_input_modes=["text/plain", "application/json"],
+            default_output_modes=["text/plain", "application/json"],
         )
 
         return A2AServer(
@@ -473,25 +310,7 @@ def wrap_agent(
     method: str = None,
     **kwargs,
 ) -> AgentWrapper:
-    """
-    Convenience function to wrap an agent instance.
-
-    Args:
-        agent: The agent instance to wrap
-        name: Agent name (default: class name)
-        method: Method to use as handler (default: auto-detect)
-        **kwargs: Additional arguments for AgentWrapper
-
-    Returns:
-        AgentWrapper instance
-
-    Example:
-        from langchain.agents import AgentExecutor
-
-        agent = AgentExecutor(...)
-        wrapper = wrap_agent(agent, method="invoke")
-        await wrapper.serve(port=8100)
-    """
+    """Convenience function to wrap an agent instance."""
     if name is None:
         name = agent.__class__.__name__
 

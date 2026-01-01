@@ -75,10 +75,7 @@ class DAUploadResult:
 
 # Config types
 class LLMProviderConfig(TypedDict, total=False):
-    """LLM provider configuration for adapters (Claude, OpenAI, LangChain).
-
-    Note: For agent registration config, use aip_sdk.types.AgentConfig instead.
-    """
+    """LLM provider configuration for adapters (Claude, OpenAI, LangChain)."""
     api_key: str
     base_url: str
     model: str

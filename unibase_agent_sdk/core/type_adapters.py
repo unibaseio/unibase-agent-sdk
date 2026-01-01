@@ -1,24 +1,18 @@
-"""Type adapters for converting between AIP SDK types and A2A Protocol types.
-
-This module provides bidirectional conversion between:
-- AIP SDK types (from aip.sdk.types)
-- A2A Protocol types (from unibase_agent_sdk.a2a.types)
-
-The A2A protocol types are the canonical representation for this framework.
-AIP SDK types are converted to/from A2A types when communicating with the AIP platform.
-"""
+"""Type adapters for converting between AIP SDK types and A2A Protocol types."""
 
 from typing import Dict, Any, List, Optional
 from enum import Enum
 
-# Import A2A types (canonical)
-from ..a2a.types import (
+# Import A2A types directly from Google A2A SDK
+from a2a.types import (
     Task as A2ATask,
     TaskState as A2ATaskState,
     TaskStatus as A2ATaskStatus,
-    Skill as A2ASkill,
+    AgentSkill as A2ASkill,
     Message,
+    Role,
 )
+from a2a.client.helpers import create_text_message_object
 
 # Import AIP SDK types (for platform communication)
 try:
@@ -79,14 +73,7 @@ class TaskStatusMapping:
 # ============================================================
 
 def a2a_skill_to_aip_config(skill: A2ASkill) -> Optional["AIPSkillConfig"]:
-    """Convert A2A Skill to AIP SDK SkillConfig.
-
-    Args:
-        skill: A2A protocol Skill
-
-    Returns:
-        AIP SDK SkillConfig or None if AIP SDK not available
-    """
+    """Convert A2A Skill to AIP SDK SkillConfig."""
     if not AIP_SDK_AVAILABLE or not AIPSkillConfig:
         return None
 
@@ -101,14 +88,7 @@ def a2a_skill_to_aip_config(skill: A2ASkill) -> Optional["AIPSkillConfig"]:
 
 
 def aip_skill_config_to_a2a(skill_config: "AIPSkillConfig") -> A2ASkill:
-    """Convert AIP SDK SkillConfig to A2A Skill.
-
-    Args:
-        skill_config: AIP SDK SkillConfig
-
-    Returns:
-        A2A protocol Skill
-    """
+    """Convert AIP SDK SkillConfig to A2A Skill."""
     # Extract input/output types from structured definitions
     input_modes = ["application/json"] if skill_config.inputs else ["text/plain"]
     output_modes = ["application/json"] if skill_config.outputs else ["text/plain"]
@@ -125,14 +105,7 @@ def aip_skill_config_to_a2a(skill_config: "AIPSkillConfig") -> A2ASkill:
 
 
 def aip_agent_config_skills_to_a2a(agent_config: "AIPAgentConfig") -> List[A2ASkill]:
-    """Convert all skills from AIP AgentConfig to A2A Skills.
-
-    Args:
-        agent_config: AIP SDK AgentConfig
-
-    Returns:
-        List of A2A Skills
-    """
+    """Convert all skills from AIP AgentConfig to A2A Skills."""
     if not agent_config.skills:
         return []
 
@@ -144,14 +117,7 @@ def aip_agent_config_skills_to_a2a(agent_config: "AIPAgentConfig") -> List[A2ASk
 # ============================================================
 
 def a2a_task_to_aip_task(task: A2ATask) -> Optional["AIPTask"]:
-    """Convert A2A Task to AIP SDK Task.
-
-    Args:
-        task: A2A protocol Task
-
-    Returns:
-        AIP SDK Task or None if AIP SDK not available
-    """
+    """Convert A2A Task to AIP SDK Task."""
     if not AIP_SDK_AVAILABLE or not AIPTask:
         return None
 
@@ -179,16 +145,9 @@ def a2a_task_to_aip_task(task: A2ATask) -> Optional["AIPTask"]:
 
 
 def aip_task_to_a2a_task(task: "AIPTask") -> A2ATask:
-    """Convert AIP SDK Task to A2A Task.
-
-    Args:
-        task: AIP SDK Task
-
-    Returns:
-        A2A protocol Task
-    """
-    # Create initial message from task description
-    message = Message.user(task.description)
+    """Convert AIP SDK Task to A2A Task."""
+    # Create initial message from task description using Google A2A helper
+    message = create_text_message_object(Role.user, task.description)
 
     # Determine initial state
     state = A2ATaskState.SUBMITTED
@@ -210,14 +169,7 @@ def aip_task_to_a2a_task(task: "AIPTask") -> A2ATask:
 # ============================================================
 
 def extract_a2a_capabilities_from_aip_config(config: "AIPAgentConfig") -> List[str]:
-    """Extract A2A-compatible capabilities from AIP AgentConfig.
-
-    Args:
-        config: AIP SDK AgentConfig
-
-    Returns:
-        List of capability strings
-    """
+    """Extract A2A-compatible capabilities from AIP AgentConfig."""
     capabilities = []
 
     # Map AIP capabilities to A2A format
@@ -235,15 +187,7 @@ def merge_agent_metadata(
     aip_config: "AIPAgentConfig",
     additional_metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Merge AIP AgentConfig with additional metadata.
-
-    Args:
-        aip_config: AIP SDK AgentConfig
-        additional_metadata: Additional metadata to merge
-
-    Returns:
-        Merged metadata dictionary
-    """
+    """Merge AIP AgentConfig with additional metadata."""
     metadata = {}
 
     # Add AIP-specific fields
@@ -275,15 +219,7 @@ def merge_agent_metadata(
 # ============================================================
 
 def validate_task_state_transition(from_state: str, to_state: str) -> bool:
-    """Validate that a task state transition is valid in A2A protocol.
-
-    Args:
-        from_state: Current state
-        to_state: Target state
-
-    Returns:
-        True if transition is valid
-    """
+    """Validate that a task state transition is valid in A2A protocol."""
     valid_transitions = {
         "submitted": ["working", "failed", "canceled"],
         "working": ["input-required", "completed", "failed", "canceled"],
@@ -297,12 +233,5 @@ def validate_task_state_transition(from_state: str, to_state: str) -> bool:
 
 
 def normalize_skill_id(name: str) -> str:
-    """Normalize a skill name to a valid skill ID.
-
-    Args:
-        name: Skill name
-
-    Returns:
-        Normalized skill ID (lowercase, underscores)
-    """
+    """Normalize a skill name to a valid skill ID."""
     return name.lower().replace(" ", "_").replace("-", "_")
