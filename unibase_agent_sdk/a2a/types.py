@@ -9,6 +9,15 @@ from a2a.types import (
     TaskArtifactUpdateEvent,
 )
 
+# Import message types from aip_sdk (single source of truth)
+# This avoids duplication - unibase-agent-sdk depends on unibase-aip-sdk
+from aip_sdk.types import (
+    AgentMessage,
+    MessageContext,
+    RoutingHints,
+    AgentResponse,
+)
+
 
 class StreamResponse:
     """Wrapper for streaming responses from agent to client."""
@@ -51,4 +60,9 @@ class A2AErrorCode:
 __all__ = [
     "StreamResponse",
     "A2AErrorCode",
+    # Re-exported from aip_sdk.types
+    "AgentMessage",
+    "MessageContext",
+    "RoutingHints",
+    "AgentResponse",
 ]

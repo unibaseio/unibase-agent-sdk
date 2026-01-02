@@ -28,13 +28,24 @@ from a2a.client.helpers import create_text_message_object
 
 # Import Unibase extensions
 from unibase_agent_sdk.a2a.server import A2AServer
-from unibase_agent_sdk.a2a.types import StreamResponse
+from unibase_agent_sdk.a2a.types import StreamResponse, AgentMessage
 from unibase_agent_sdk.utils.logger import get_logger
 
 # Import CostModel from SDK
 from aip_sdk.types import CostModel
 
 logger = get_logger("wrappers.generic")
+
+
+def parse_agent_message(message: Message) -> AgentMessage:
+    """Parse an A2A Message into AgentMessage format.
+
+    This is the recommended way for agents to receive messages from AIP.
+    It handles both:
+    1. New format: JSON with intent, context, hints
+    2. Legacy format: Plain text or old task format
+    """
+    return AgentMessage.from_a2a_message(message)
 
 
 def _get_default_aip_endpoint() -> str:
@@ -65,13 +76,32 @@ def _create_task_handler(
     handler: Handler,
     streaming: bool = False,
 ) -> Callable[[Task, Message], AsyncIterator[StreamResponse]]:
-    """Create an A2A task handler from a simple function."""
+    """Create an A2A task handler from a simple function.
+
+    The handler receives the raw user intent from the AgentMessage format.
+    For more control, agents can use the AgentMessage type directly.
+    """
 
     is_async = asyncio.iscoroutinefunction(handler)
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        # Extract text using Google A2A utility
-        input_text = get_message_text(message)
+        # Parse message using new AgentMessage format
+        # This handles both new and legacy message formats
+        agent_message = AgentMessage.from_a2a_message(message)
+
+        # Pass the intent to the handler (the raw user request)
+        input_text = agent_message.intent
+
+        # Log context for debugging
+        logger.debug(
+            "Processing request",
+            extra={
+                "intent": input_text[:100] if input_text else None,
+                "run_id": agent_message.context.run_id,
+                "caller": agent_message.context.caller_id,
+                "has_hints": agent_message.hints is not None,
+            }
+        )
 
         if streaming:
             # Streaming handler
@@ -292,16 +322,34 @@ class AgentWrapper:
 
     async def _handle_task(self, task: Task, message: Message) -> AsyncIterator[StreamResponse]:
         """Route task to appropriate method."""
-        # Extract text using Google A2A utility
-        input_text = get_message_text(message)
+        # Parse message using new AgentMessage format
+        agent_message = AgentMessage.from_a2a_message(message)
+        input_text = agent_message.intent
+
+        # Log context for debugging
+        logger.debug(
+            "AgentWrapper processing request",
+            extra={
+                "agent": self.name,
+                "intent": input_text[:100] if input_text else None,
+                "run_id": agent_message.context.run_id,
+                "caller": agent_message.context.caller_id,
+            }
+        )
 
         # For single-skill agents, use the only method
         if len(self.skill_methods) == 1:
             method_name = list(self.skill_methods.values())[0]
         else:
-            # TODO: Could use task metadata or message to route to specific skill
-            # For now, default to first skill
-            method_name = list(self.skill_methods.values())[0]
+            # Check if hints suggest a specific skill
+            if agent_message.hints and agent_message.hints.suggested_task:
+                suggested = agent_message.hints.suggested_task
+                if suggested in self.skill_methods:
+                    method_name = self.skill_methods[suggested]
+                else:
+                    method_name = list(self.skill_methods.values())[0]
+            else:
+                method_name = list(self.skill_methods.values())[0]
 
         method = getattr(self.agent, method_name)
 

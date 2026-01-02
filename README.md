@@ -118,17 +118,91 @@ wrapper = AgentWrapper(
 await wrapper.serve(port=8100)
 ```
 
+## AgentMessage Format
+
+When agents receive requests from the AIP platform, they receive messages in the `AgentMessage` format. This provides a clean separation: the platform handles routing/payment/logging, and agents handle understanding.
+
+```python
+from unibase_agent_sdk.a2a import AgentMessage
+
+async def handle_task(task: Task, message: Message):
+    # Parse the message into AgentMessage format
+    agent_message = AgentMessage.from_a2a_message(message)
+
+    # Get the user's intent (raw text or JSON)
+    intent = agent_message.intent
+
+    # Access context information
+    print(f"Run ID: {agent_message.context.run_id}")
+    print(f"Caller: {agent_message.context.caller_id}")
+
+    # Use optional routing hints (agents can ignore these)
+    if agent_message.hints:
+        print(f"Detected category: {agent_message.hints.detected_category}")
+        print(f"Extracted entities: {agent_message.hints.extracted_entities}")
+
+    # Your agent is responsible for understanding the intent
+    result = process_intent(intent)
+
+    yield StreamResponse(message=create_text_message(result, Role.agent))
+```
+
+The `AgentMessage` format:
+- **intent**: The raw user request (your agent interprets this)
+- **context**: Platform-provided metadata (run_id, caller_id, conversation_id)
+- **hints**: Optional routing suggestions (agents can use or ignore)
+- **structured_data**: Optional structured parameters
+
+This design allows agents to:
+- Control their own input parsing
+- Use LLM, regex, or structured parsing as needed
+- Evolve independently of the platform
+
+### Calling Other Agents
+
+When your agent needs to call another agent, use the `AgentContext`:
+
+```python
+from aip_sdk.types import AgentContext
+
+async def handle_task(task: Task, message: Message, context: AgentContext):
+    agent_message = AgentMessage.from_a2a_message(message)
+
+    # If we need weather data from another agent
+    if "weather" in agent_message.intent.lower():
+        result = await context.call_agent_with_intent(
+            agent_id="weather.forecast",
+            intent="Get weather for Tokyo",
+            reason="User requested weather information"
+        )
+        # result.output contains the weather agent's response
+
+    # Access caller chain for tracing
+    caller_chain = agent_message.context.caller_chain
+    # e.g., ["user:alice", "travel.planner", "weather.forecast"]
+```
+
+All inter-agent calls go through AIP for:
+- Payment tracking (each agent call is charged)
+- Caller chain accumulation (for audit trail)
+- Logging to Membase
+- Gateway routing for remote agents
+
 ## A2A Server
 
 For more control, use `A2AServer` directly:
 
 ```python
-from unibase_agent_sdk import A2AServer, StreamResponse
+from unibase_agent_sdk import A2AServer, StreamResponse, AgentMessage
 from a2a.types import AgentCard, AgentSkill, AgentCapabilities, Task, Message
 
 async def handle_task(task: Task, message: Message):
-    text = message.parts[0].text
-    response_msg = create_text_message("Processed: " + text, Role.agent)
+    # Parse using AgentMessage (handles both new and legacy formats)
+    agent_message = AgentMessage.from_a2a_message(message)
+    intent = agent_message.intent
+
+    # Process the intent
+    response_msg = create_text_message("Processed: " + intent, Role.agent)
     yield StreamResponse(message=response_msg)
 
 agent_card = AgentCard(
@@ -208,8 +282,27 @@ server = expose_as_a2a(
 
 | Mode | Use Case |
 |------|----------|
-| `DIRECT` | Agent is publicly accessible |
-| `GATEWAY` | Agent behind NAT/firewall, uses gateway routing |
+| `DIRECT` | Agent is publicly accessible via HTTP |
+| `GATEWAY` | Agent behind NAT/firewall, polls gateway for tasks |
+
+**How GATEWAY mode works:**
+1. Agent registers with gateway as "external" (gets a poll URL)
+2. Agent registers with AIP (no endpoint_url needed)
+3. Agent continuously polls gateway for incoming tasks
+4. When a task arrives, agent processes it and reports result back
+
+```python
+# Private agent behind firewall
+server = expose_as_a2a(
+    name="Private Agent",
+    handler=my_handler,
+    registration_mode=RegistrationMode.GATEWAY,
+    gateway_url="http://gateway.example.com:8080",
+    platform_url="http://aip.example.com:8001",
+)
+# Agent will poll gateway for tasks instead of listening for HTTP requests
+await server.run()
+```
 
 ## Agent Registry Client
 
@@ -302,6 +395,7 @@ except TaskExecutionError as e:
 See the `examples/` directory:
 
 - `wrap_any_agent.py` - Wrapping functions and classes
+- `agent_message_format.py` - Working with AgentMessage format
 - `streaming_agent.py` - Streaming responses
 - `a2a_client.py` - Consuming agents
 - `agent_registration_direct_mode.py` - Platform registration
