@@ -1,11 +1,16 @@
 """Type definitions for the framework."""
-from typing import TypedDict, Optional, Dict, Any, List
-from dataclasses import dataclass, field
+
+from __future__ import annotations
+
 from enum import Enum
+from typing import Any, Dict, Optional, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentType(Enum):
     """Agent type enumeration."""
+
     AIP = "aip"
     CLAUDE = "claude"
     LANGCHAIN = "langchain"
@@ -13,69 +18,54 @@ class AgentType(Enum):
     CUSTOM = "custom"
 
 
-@dataclass
-class AgentIdentity:
+class AgentIdentity(BaseModel):
     """Agent identity information."""
+
+    model_config = ConfigDict(use_enum_values=True)
+
     agent_id: str
     name: str
     agent_type: AgentType
     public_key: Optional[str] = None
     wallet_address: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "agent_id": self.agent_id,
-            "name": self.name,
-            "agent_type": self.agent_type.value,
-            "public_key": self.public_key,
-            "wallet_address": self.wallet_address,
-            "metadata": self.metadata
-        }
+        return self.model_dump()
 
 
-@dataclass
-class MemoryRecord:
+class MemoryRecord(BaseModel):
     """Memory record."""
+
     session_id: str
     agent_id: str
     content: Dict[str, Any]
     timestamp: float
     metadata: Optional[Dict[str, Any]] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "session_id": self.session_id,
-            "agent_id": self.agent_id,
-            "content": self.content,
-            "timestamp": self.timestamp,
-            "metadata": self.metadata
-        }
+        return self.model_dump()
 
 
-@dataclass
-class DAUploadResult:
+class DAUploadResult(BaseModel):
     """DA upload result."""
+
     transaction_hash: str
     da_url: str
     size: int
     timestamp: float
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "transaction_hash": self.transaction_hash,
-            "da_url": self.da_url,
-            "size": self.size,
-            "timestamp": self.timestamp
-        }
+        return self.model_dump()
 
 
 # Config types
 class LLMProviderConfig(TypedDict, total=False):
     """LLM provider configuration for adapters (Claude, OpenAI, LangChain)."""
+
     api_key: str
     base_url: str
     model: str
@@ -83,9 +73,9 @@ class LLMProviderConfig(TypedDict, total=False):
     extra_params: Dict[str, Any]
 
 
-
 class MemoryConfig(TypedDict, total=False):
     """Memory configuration."""
+
     membase_endpoint: str
     da_endpoint: str
     api_key: str
@@ -95,6 +85,7 @@ class MemoryConfig(TypedDict, total=False):
 
 class RegistryConfig(TypedDict, total=False):
     """Registry configuration."""
+
     aip_endpoint: str
     membase_endpoint: str
     web3_rpc_url: str

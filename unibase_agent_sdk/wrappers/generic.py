@@ -38,13 +38,7 @@ logger = get_logger("wrappers.generic")
 
 
 def parse_agent_message(message: Message) -> AgentMessage:
-    """Parse an A2A Message into AgentMessage format.
-
-    This is the recommended way for agents to receive messages from AIP.
-    It handles both:
-    1. New format: JSON with intent, context, hints
-    2. Legacy format: Plain text or old task format
-    """
+    """Parse an A2A Message into AgentMessage format."""
     return AgentMessage.from_a2a_message(message)
 
 
@@ -85,8 +79,7 @@ def _create_task_handler(
     is_async = asyncio.iscoroutinefunction(handler)
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        # Parse message using new AgentMessage format
-        # This handles both new and legacy message formats
+        # Parse message using AgentMessage format
         agent_message = AgentMessage.from_a2a_message(message)
 
         # Pass the intent to the handler (the raw user request)
