@@ -150,7 +150,7 @@ def aip_task_to_a2a_task(task: "AIPTask") -> A2ATask:
     message = create_text_message_object(Role.user, task.description)
 
     # Determine initial state
-    state = A2ATaskState.SUBMITTED
+    state = A2ATaskState.submitted
 
     return A2ATask(
         id=task.task_id,

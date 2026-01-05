@@ -117,7 +117,9 @@ class A2AServer:
         async def get_agent_card():
             return JSONResponse(content=self._serialize_agent_card())
 
-        # JSON-RPC endpoint
+        # JSON-RPC endpoint - available at both / and /a2a for compatibility
+        # Google A2A protocol expects JSONRPC at root URL
+        @app.post("/")
         @app.post("/a2a")
         async def jsonrpc_endpoint(request: Request):
             try:
@@ -331,6 +333,25 @@ class A2AServer:
             )
 
         self._tasks[task_id] = task
+
+        # Return the last agent message for compatibility with A2A middleware
+        # The middleware expects result.kind === "message" to extract text
+        # If we return a Task, it JSON.stringifies the whole object
+        if history:
+            last_agent_messages = [m for m in history if m.role == Role.agent]
+            if last_agent_messages:
+                response_data = last_agent_messages[-1].model_dump(by_alias=True, exclude_none=True)
+
+                # Add AIP events to response metadata for AG-UI protocol
+                aip_events = await self._get_aip_events()
+                if aip_events:
+                    if "metadata" not in response_data or response_data["metadata"] is None:
+                        response_data["metadata"] = {}
+                    response_data["metadata"]["aip_events"] = aip_events
+
+                return response_data
+
+        # Fallback: return task if no agent message found
         return self._serialize_task(task)
 
     async def _handle_message_stream(
@@ -544,6 +565,62 @@ class A2AServer:
         except Exception as e:
             logger.warning(f"AIP registration failed (agent will run without registration): {e}")
             # Don't fail startup - agent can still work without platform registration
+
+    async def _get_aip_events(self) -> Optional[list]:
+        """Get recent AIP events (payments, memory) for this agent.
+
+        Returns events in a format suitable for the AG-UI protocol.
+        These events are included in the A2A response metadata and
+        can be displayed by the frontend.
+        """
+        if not self.registration_config or not self._aip_client:
+            return None
+
+        try:
+            import httpx
+            from datetime import datetime
+
+            aip_endpoint = self.registration_config.get("aip_endpoint", "http://localhost:8001")
+            agent_id = self._agent_id or f"erc8004:{self.registration_config.get('handle', '')}"
+
+            # Query AIP for recent events for this agent
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{aip_endpoint}/agents/{agent_id}/events",
+                    params={"limit": 10, "types": "payment_settled,memory_uploaded"}
+                )
+
+                if response.status_code == 200:
+                    events = response.json()
+                    if events:
+                        # Transform events to AG-UI compatible format
+                        result = []
+                        for event in events:
+                            event_type = event.get("type", "")
+                            if event_type in ("payment_settled", "payment.settled"):
+                                result.append({
+                                    "type": "payment",
+                                    "agent_id": event.get("destination") or agent_id,
+                                    "amount": float(event.get("amount", 0)),
+                                    "currency": event.get("currency", "USD"),
+                                    "timestamp": event.get("ts", datetime.now().isoformat()),
+                                    "transaction_url": event.get("tx_url"),
+                                    "status": "settled"
+                                })
+                            elif "memory" in event_type:
+                                result.append({
+                                    "type": "memory",
+                                    "scope": event.get("scope") or event.get("key", "unknown"),
+                                    "operation": event.get("operation", "write"),
+                                    "timestamp": event.get("ts", datetime.now().isoformat()),
+                                    "membase_url": event.get("membase_url"),
+                                    "data_size": event.get("size")
+                                })
+                        return result if result else None
+        except Exception as e:
+            logger.debug(f"Failed to get AIP events: {e}")
+
+        return None
 
     @property
     def agent_id(self) -> Optional[str]:

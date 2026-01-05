@@ -11,7 +11,16 @@ from unibase_agent_sdk.core.types import (
 )
 
 # Generic Wrappers (wrap ANY agent as A2A service)
-from unibase_agent_sdk.wrappers import expose_as_a2a, wrap_agent, AgentWrapper
+from unibase_agent_sdk.wrappers import (
+    expose_as_a2a,
+    wrap_agent,
+    AgentWrapper,
+    # Framework-specific wrappers
+    expose_langgraph_as_a2a,
+    LangGraphWrapper,
+    expose_adk_as_a2a,
+    ADKWrapper,
+)
 
 # A2A Server and extensions
 from unibase_agent_sdk.a2a import A2AServer, StreamResponse, A2AClient
@@ -29,6 +38,11 @@ __all__ = [
     "expose_as_a2a",
     "wrap_agent",
     "AgentWrapper",
+    # Framework-specific Wrappers
+    "expose_langgraph_as_a2a",
+    "LangGraphWrapper",
+    "expose_adk_as_a2a",
+    "ADKWrapper",
     # A2A Server and extensions
     "A2AServer",
     "StreamResponse",
