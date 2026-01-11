@@ -77,6 +77,7 @@ def _create_task_handler(
     """
 
     is_async = asyncio.iscoroutinefunction(handler)
+    is_async_gen = inspect.isasyncgenfunction(handler)
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
         # Parse message using AgentMessage format
@@ -98,10 +99,17 @@ def _create_task_handler(
 
         if streaming:
             # Streaming handler
-            if is_async:
+            if is_async_gen:
                 async for chunk in handler(input_text):
                     response_msg = create_text_message_object(Role.agent, chunk)
                     yield StreamResponse(message=response_msg)
+            elif is_async:
+                # Limit case: async function returning iterable? (unlikely for streaming)
+                # But if so, await it first
+                result = await handler(input_text)
+                for chunk in result:
+                     response_msg = create_text_message_object(Role.agent, chunk)
+                     yield StreamResponse(message=response_msg)
             else:
                 # Sync streaming (returns list)
                 for chunk in handler(input_text):

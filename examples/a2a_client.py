@@ -14,9 +14,10 @@ Environment Variables:
 import asyncio
 import argparse
 import os
+import uuid
 
 from unibase_agent_sdk.a2a import A2AClient
-from a2a.types import Message
+from a2a.types import Message, Role, TextPart
 
 
 async def discover_agent(client: A2AClient, agent_url: str):
@@ -54,7 +55,11 @@ async def send_task(client: A2AClient, agent_url: str, message_text: str):
     print(f"Message: {message_text}")
 
     try:
-        message = Message.user(message_text)
+        message = Message(
+            role=Role.USER,
+            parts=[TextPart(text=message_text)],
+            message_id=str(uuid.uuid4())
+        )
         task = await client.send_task(agent_url, message)
 
         print(f"\nTask ID: {task.id}")
@@ -83,7 +88,11 @@ async def stream_task(client: A2AClient, agent_url: str, message_text: str):
     print(f"\nStreaming response:")
 
     try:
-        message = Message.user(message_text)
+        message = Message(
+            role=Role.USER,
+            parts=[TextPart(text=message_text)],
+            message_id=str(uuid.uuid4())
+        )
         async for response in client.stream_task(agent_url, message):
             if response.message:
                 for part in response.message.parts:

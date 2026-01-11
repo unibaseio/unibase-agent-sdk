@@ -17,7 +17,7 @@ Test:
     # Non-streaming request
     curl -X POST http://localhost:8100/a2a \
         -H "Content-Type: application/json" \
-        -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"role":"user","parts":[{"type":"text","text":"Tell me a story"}]}},"id":1}'
+        -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"role":"user","parts":[{"type":"text","text":"Tell me a story"}],"messageId":"test-msg-1"}},"id":1}'
 """
 
 import asyncio
