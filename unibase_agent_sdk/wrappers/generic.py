@@ -10,6 +10,7 @@ from typing import (
     Awaitable,
     Union,
 )
+import json
 import asyncio
 import inspect
 import os
@@ -39,7 +40,65 @@ logger = get_logger("wrappers.generic")
 
 def parse_agent_message(message: Message) -> AgentMessage:
     """Parse an A2A Message into AgentMessage format."""
-    return AgentMessage.from_a2a_message(message)
+    # First try the standard method
+    # return AgentMessage.from_a2a_message(message)
+    # if agent_msg.intent:
+    #     return agent_msg
+
+    # If intent is empty, it might be due to RootModel parts (a2a-sdk v0.3+)
+    # We manually extract text here
+    
+    text_parts = []
+    print(f"DEBUG: message.parts type: {type(message.parts)}")
+    for i, part in enumerate(message.parts):
+        print(f"DEBUG: part[{i}] type: {type(part)}")
+        print(f"DEBUG: part[{i}] dir: {dir(part)}")
+        
+        # Handle Pydantic RootModel (part.root)
+        target = part.root if hasattr(part, "root") else part
+        print(f"DEBUG: target type: {type(target)}")
+        if hasattr(target, "root"):
+             print("DEBUG: target still has root attribute")
+
+        if hasattr(target, "text"):
+            val = getattr(target, "text")
+            print(f"DEBUG: target.text: {val}")
+            if val:
+                text_parts.append(val)
+        else:
+             print("DEBUG: target has no 'text' attribute")
+            
+    text = " ".join(text_parts)
+    print(f"DEBUG: Extracted text: '{text}'")
+    
+    # Logic similar to AgentMessage.from_a2a_message
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            if "intent" in data and "context" in data:
+                return AgentMessage.from_dict(data)
+                
+            if "task" in data:
+                # Handle task payload format if present
+                # (Simplified version of what logic exists in aip_sdk)
+                pass
+                
+            # If valid JSON but not a standard envelope, treat as structured data?
+            # Or just fall through to text intent if it's not a special format.
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Default: Treat text as intent
+    # Use message_id as run_id if available, to ensure we have some context
+    from aip_sdk.types import MessageContext
+    
+    return AgentMessage(
+        intent=text,
+        context=MessageContext(
+            run_id=getattr(message, "message_id", "") or "",
+            caller_id="unknown"
+        )
+    )
 
 
 def _get_default_aip_endpoint() -> str:
@@ -81,7 +140,8 @@ def _create_task_handler(
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
         # Parse message using AgentMessage format
-        agent_message = AgentMessage.from_a2a_message(message)
+        # Use our local helper which handles RootModel parts correctly
+        agent_message = parse_agent_message(message)
 
         # Pass the intent to the handler (the raw user request)
         input_text = agent_message.intent
