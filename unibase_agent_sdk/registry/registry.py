@@ -393,6 +393,71 @@ class AgentRegistryClient:
             logger.warning(f"Failed to list agents from AIP: {e}", exc_info=True)
             return []
     
+    async def register_agent_group(
+        self,
+        name: str,
+        description: str,
+        member_agent_ids: List[str],
+        price: float = 0.0,
+        currency: str = "USD",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Register an agent group with intelligent routing.
+
+        An agent group uses LLM-based routing to select the most suitable
+        member agent for each task. The group acts as a thin routing layer;
+        charges happen at the selected agent level.
+
+        Args:
+            name: Group name (e.g., "Travel Planning Team")
+            description: Description of the group's capabilities
+            member_agent_ids: List of agent IDs to include in the group
+            price: Price for group orchestration (typically 0.0, routing is free)
+            currency: Currency for pricing (default: USD)
+            metadata: Additional metadata
+
+        Returns:
+            Registration result with group_id and details
+
+        Example:
+            result = await registry.register_agent_group(
+                name="specialized_team",
+                description="Team of specialized agents for different domains",
+                member_agent_ids=[
+                    "erc8004:data_processor",
+                    "erc8004:ml_analyst",
+                    "erc8004:report_generator",
+                ],
+                price=0.0,  # Routing is free
+            )
+            print(f"Group registered: {result['group_id']}")
+
+        Note:
+            All member agents must be registered before creating the group.
+            The group will use LLM-based intelligent routing to select the
+            single best agent for each task.
+        """
+        from aip_sdk.types import AgentGroupConfig
+
+        # Create group config
+        group_config = AgentGroupConfig(
+            name=name,
+            description=description,
+            member_agent_ids=member_agent_ids,
+            price=price,
+            currency=currency,
+            metadata=metadata or {},
+        )
+
+        # Register through AIP SDK
+        try:
+            result = await self._aip_client.register_agent_group(group_config)
+            logger.info(f"Agent group registered: {result.get('group_id')}")
+            return result
+        except Exception as e:
+            logger.error(f"Group registration failed: {e}", exc_info=True)
+            raise RegistryError(f"Failed to register agent group: {e}")
+
     async def close(self):
         """Close the registry and clean up resources."""
         if self._aip_client:

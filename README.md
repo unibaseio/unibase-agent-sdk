@@ -309,29 +309,68 @@ await server.run()
 For programmatic platform interaction:
 
 ```python
-from unibase_agent_sdk import AgentRegistry
+from unibase_agent_sdk import AgentRegistryClient, AgentType
 
-registry = AgentRegistry(
-    platform_url="http://localhost:8001",
-    gateway_url="http://localhost:8080"
+registry = AgentRegistryClient(
+    aip_endpoint="http://localhost:8001",
+    mode=RegistrationMode.DIRECT
 )
 
 # Register agent
-await registry.register(
-    agent_id="my.agent",
+identity = await registry.register_agent(
     name="My Agent",
-    url="http://localhost:8100"
+    agent_type=AgentType.AIP,
+    metadata={"description": "My specialized agent"}
 )
 
 # Discover agents
 agents = await registry.list_agents()
-
-# Call another agent
-result = await registry.call_agent(
-    agent_id="other.agent",
-    message="Hello"
-)
 ```
+
+## Agent Groups with Intelligent Routing
+
+Create groups of specialized agents where tasks are automatically routed to the most suitable agent using LLM-based routing:
+
+```python
+from unibase_agent_sdk import AgentRegistryClient
+
+registry = AgentRegistryClient(aip_endpoint="http://localhost:8001")
+
+# Create a group of specialized agents
+result = await registry.register_agent_group(
+    name="specialized_team",
+    description="Team of specialized agents for different domains",
+    member_agent_ids=[
+        "erc8004:data_processor",   # Good at: data extraction, parsing
+        "erc8004:ml_analyst",        # Good at: ML models, predictions
+        "erc8004:report_generator",  # Good at: reports, summaries
+        "erc8004:api_connector",     # Good at: API calls, integrations
+        "erc8004:database_expert",   # Good at: SQL, queries
+    ],
+    price=0.0,  # Routing is free; charges happen at agent level
+)
+
+print(f"Group registered: {result['group_id']}")
+```
+
+### Usage Example
+
+```python
+from aip_sdk.platform import AsyncAIPClient
+
+client = AsyncAIPClient(base_url="http://localhost:8001")
+
+# Use the group - routing happens automatically
+result = await client.run(
+    objective="Extract data from CSV and generate summary report",
+    agent="group:specialized_team",  # Use group ID
+)
+
+# Group automatically routes to: data_processor → report_generator
+# Only 2 agents invoked (not all 5), saving 60% cost!
+```
+
+See [examples/agent_group_registration.py](examples/agent_group_registration.py) for a complete example.
 
 ## A2A Protocol Endpoints
 
@@ -399,6 +438,7 @@ See the `examples/` directory:
 - `streaming_agent.py` - Streaming responses
 - `a2a_client.py` - Consuming agents
 - `agent_registration_direct_mode.py` - Platform registration
+- `agent_group_registration.py` - Creating agent groups with intelligent routing
 
 ## License
 
