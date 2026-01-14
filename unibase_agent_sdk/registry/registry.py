@@ -63,9 +63,21 @@ class AgentRegistryClient:
         membase_endpoint: Optional[str] = None,
         mode: RegistrationMode = RegistrationMode.DIRECT,
         gateway_url: Optional[str] = None,
-        agent_backend_url: Optional[str] = None
+        agent_backend_url: Optional[str] = None,
+        wait_for_services: bool = False,
+        health_check_timeout: int = 30
     ):
-        """Initialize the Agent Registry."""
+        """Initialize the Agent Registry.
+
+        Args:
+            aip_endpoint: AIP platform endpoint URL
+            membase_endpoint: Membase service endpoint URL
+            mode: Registration mode (DIRECT or GATEWAY)
+            gateway_url: Gateway URL (required for GATEWAY mode)
+            agent_backend_url: Agent backend URL (required for GATEWAY mode)
+            wait_for_services: If True, wait for services to be healthy during init
+            health_check_timeout: Max time to wait for services (seconds)
+        """
         # Load from environment or deployment config if not provided
         self.aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
         self.membase_endpoint = membase_endpoint or os.getenv("MEMBASE_ENDPOINT", "http://localhost:8002")
@@ -103,7 +115,102 @@ class AgentRegistryClient:
         if self.mode == RegistrationMode.GATEWAY:
             logger.info(f"  Gateway URL: {self.gateway_url}")
             logger.info(f"  Agent Backend URL: {self.agent_backend_url}")
-    
+
+        # Wait for services if requested
+        if wait_for_services:
+            import asyncio
+            max_attempts = health_check_timeout
+            if not asyncio.run(self.wait_for_services(max_attempts=max_attempts)):
+                logger.warning("Some services are not healthy, but continuing initialization")
+
+    async def health_check(self) -> Dict[str, bool]:
+        """Check health of all remote services.
+
+        Returns:
+            Dict with service names and their health status
+
+        Example:
+            health = await registry.health_check()
+            if not all(health.values()):
+                print(f"Unhealthy services: {[k for k, v in health.items() if not v]}")
+        """
+        results = {}
+
+        # Check AIP platform
+        try:
+            results["aip_platform"] = await self._aip_client.health_check()
+        except Exception as e:
+            logger.warning(f"AIP platform health check failed: {e}")
+            results["aip_platform"] = False
+
+        # Check Gateway (if in gateway mode)
+        if self.mode == RegistrationMode.GATEWAY and self._gateway_client:
+            try:
+                results["gateway"] = await self._gateway_client.health_check()
+            except Exception as e:
+                logger.warning(f"Gateway health check failed: {e}")
+                results["gateway"] = False
+
+        # Check Membase (if not in gateway mode)
+        if self.mode != RegistrationMode.GATEWAY:
+            try:
+                response = await self._http_client.get(
+                    f"{self.membase_endpoint}/health",
+                    timeout=5.0
+                )
+                results["membase"] = response.status_code == 200
+            except Exception as e:
+                logger.warning(f"Membase health check failed: {e}")
+                results["membase"] = False
+
+        return results
+
+    async def wait_for_services(
+        self,
+        max_attempts: int = 30,
+        interval: float = 1.0,
+        required_services: Optional[List[str]] = None
+    ) -> bool:
+        """Wait for required services to become healthy.
+
+        Args:
+            max_attempts: Maximum number of health check attempts
+            interval: Time to wait between attempts (seconds)
+            required_services: List of service names that must be healthy.
+                             If None, all services must be healthy.
+
+        Returns:
+            True if all required services are healthy, False otherwise
+
+        Example:
+            # Wait for AIP platform only
+            if await registry.wait_for_services(required_services=["aip_platform"]):
+                print("AIP platform is ready!")
+        """
+        import asyncio
+
+        for attempt in range(max_attempts):
+            health = await self.health_check()
+
+            if required_services:
+                # Check only required services
+                required_health = {k: v for k, v in health.items() if k in required_services}
+                if all(required_health.values()):
+                    logger.info(f"Required services are healthy: {list(required_health.keys())}")
+                    return True
+            else:
+                # Check all services
+                if all(health.values()):
+                    logger.info("All services are healthy")
+                    return True
+
+            if attempt < max_attempts - 1:
+                logger.debug(f"Waiting for services (attempt {attempt + 1}/{max_attempts})...")
+                await asyncio.sleep(interval)
+
+        logger.error("Services did not become healthy in time")
+        return False
+
     async def register_agent(
         self,
         name: str,
@@ -469,12 +576,47 @@ class AgentRegistryClient:
     # A2A Protocol Methods
     # ============================================================
     
+    async def check_a2a_agent_health(self, agent_url: str) -> bool:
+        """Check if an A2A agent is healthy.
+
+        Args:
+            agent_url: Base URL of the agent
+
+        Returns:
+            True if agent is healthy, False otherwise
+
+        Example:
+            if await registry.check_a2a_agent_health("http://agent.example.com"):
+                print("Agent is ready to receive tasks")
+        """
+        return await self._a2a_client.health_check(agent_url)
+
     async def discover_a2a_agent(
         self,
         agent_url: str,
-        force_refresh: bool = False
+        force_refresh: bool = False,
+        check_health: bool = True
     ) -> AgentCard:
-        """Discover an external agent via A2A protocol."""
+        """Discover an external agent via A2A protocol.
+
+        Args:
+            agent_url: Base URL of the agent
+            force_refresh: Force refresh agent card from remote
+            check_health: Check agent health before discovery
+
+        Returns:
+            AgentCard with agent capabilities
+
+        Example:
+            card = await registry.discover_a2a_agent("http://agent.example.com")
+            print(f"Discovered: {card.name}")
+        """
+        # Optionally check health first
+        if check_health:
+            is_healthy = await self._a2a_client.health_check(agent_url)
+            if not is_healthy:
+                logger.warning(f"Agent at {agent_url} may not be healthy, proceeding anyway")
+
         card = await self._a2a_client.discover_agent(agent_url, force_refresh)
         self._discovered_agents[agent_url] = card
         logger.info(f"Discovered A2A Agent: {card.name} at {agent_url}")

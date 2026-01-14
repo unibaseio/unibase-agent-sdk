@@ -77,6 +77,33 @@ class A2AClient:
             await self._http_client.aclose()
             self._http_client = None
 
+    async def health_check(self, agent_url: str) -> bool:
+        """Check if a remote agent is healthy and responsive.
+        """
+        agent_url = agent_url.rstrip("/")
+
+        # Try standard health endpoints
+        health_endpoints = ["/health", "/healthz"]
+
+        for endpoint in health_endpoints:
+            try:
+                response = await self.http_client.get(
+                    f"{agent_url}{endpoint}",
+                    headers=self._headers,
+                    timeout=5.0
+                )
+                if response.status_code == 200:
+                    return True
+            except Exception:
+                continue
+
+        # Fallback: try to discover agent card as minimal health check
+        try:
+            await self.discover_agent(agent_url, force_refresh=True)
+            return True
+        except Exception:
+            return False
+
     async def discover_agent(
         self,
         base_url: str,

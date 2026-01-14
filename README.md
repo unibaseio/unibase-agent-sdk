@@ -8,6 +8,24 @@ Framework for building A2A-compatible AI agents.
 pip install unibase-agent-sdk
 ```
 
+### Development Installation
+
+This package depends on `unibase-aip-sdk` which is installed from GitHub. We recommend using `uv` for dependency management:
+
+```bash
+# Install uv if you haven't already
+pip install uv
+
+# Clone the repository
+git clone https://github.com/unibaseio/unibase-agent-sdk.git
+cd unibase-agent-sdk
+
+# Install with uv (handles GitHub dependencies automatically)
+uv pip install -e .
+```
+
+The `uv` package manager will automatically install `unibase-aip-sdk` from GitHub as specified in `pyproject.toml`.
+
 > **Note:** This package depends on `a2a-sdk` (Google's Agent-to-Agent Protocol SDK). If you have an unrelated package named `a2a` (v0.44) installed, it will conflict. Uninstall it first with `pip uninstall a2a`.
 
 ## Quick Start
