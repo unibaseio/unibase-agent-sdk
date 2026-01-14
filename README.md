@@ -8,6 +8,8 @@ Framework for building A2A-compatible AI agents.
 pip install unibase-agent-sdk
 ```
 
+> **Note:** This package depends on `a2a-sdk` (Google's Agent-to-Agent Protocol SDK). If you have an unrelated package named `a2a` (v0.44) installed, it will conflict. Uninstall it first with `pip uninstall a2a`.
+
 ## Quick Start
 
 ### Expose a Function as an Agent
