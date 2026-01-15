@@ -8,6 +8,7 @@ from enum import Enum
 from ..core.types import AgentIdentity, AgentType
 from ..core.exceptions import RegistryError, AgentNotFoundError, ConfigurationError
 from ..utils.logger import get_logger
+from ..utils.config import get_default_aip_endpoint
 import httpx
 
 # Import AIP SDK for agent registration and platform communication
@@ -16,21 +17,6 @@ from aip_sdk.exceptions import AIPError, RegistrationError as AIPRegistrationErr
 from aip_sdk.gateway import GatewayClient
 
 logger = get_logger("registry.registry")
-
-
-def _get_default_aip_endpoint() -> str:
-    """Get default AIP endpoint from deployment config or environment."""
-    # Check environment variable first
-    env_url = os.environ.get("AIP_ENDPOINT")
-    if env_url:
-        return env_url
-
-    try:
-        from aip.core.config import get_config
-        config = get_config()
-        return config.aip.public_url
-    except Exception:
-        return "http://api.aip.unibase.com"
 
 
 class RegistrationMode(Enum):
@@ -79,7 +65,7 @@ class AgentRegistryClient:
             health_check_timeout: Max time to wait for services (seconds)
         """
         # Load from environment or deployment config if not provided
-        self.aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
+        self.aip_endpoint = aip_endpoint or get_default_aip_endpoint()
         self.membase_endpoint = membase_endpoint or os.getenv("MEMBASE_ENDPOINT", "http://localhost:8002")
         self.mode = mode
         self.gateway_url = gateway_url or os.getenv("GATEWAY_URL")

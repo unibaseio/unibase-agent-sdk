@@ -15,7 +15,7 @@ from a2a.client.helpers import create_text_message_object
 from ..a2a.server import A2AServer
 from ..a2a.types import StreamResponse, AgentMessage
 from ..utils.logger import get_logger
-from .generic import _get_default_aip_endpoint
+from ..utils.config import get_default_aip_endpoint
 
 try:
     from aip_sdk.types import CostModel
@@ -239,7 +239,7 @@ class ADKWrapper:
 
             registration_config = {
                 "user_id": user_id,
-                "aip_endpoint": aip_endpoint or _get_default_aip_endpoint(),
+                "aip_endpoint": aip_endpoint or get_default_aip_endpoint(),
                 "handle": handle,
                 "name": self.name,
                 "description": self.description,

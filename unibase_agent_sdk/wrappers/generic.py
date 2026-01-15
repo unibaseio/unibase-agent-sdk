@@ -31,6 +31,7 @@ from a2a.client.helpers import create_text_message_object
 from unibase_agent_sdk.a2a.server import A2AServer
 from unibase_agent_sdk.a2a.types import StreamResponse, AgentMessage
 from unibase_agent_sdk.utils.logger import get_logger
+from unibase_agent_sdk.utils.config import get_default_aip_endpoint
 
 # Import CostModel from SDK
 from aip_sdk.types import CostModel
@@ -99,20 +100,6 @@ def parse_agent_message(message: Message) -> AgentMessage:
             caller_id="unknown"
         )
     )
-
-
-def _get_default_aip_endpoint() -> str:
-    """Get default AIP endpoint from deployment config or environment."""
-    env_url = os.environ.get("AIP_ENDPOINT")
-    if env_url:
-        return env_url
-
-    try:
-        from aip.core.config import get_config
-        config = get_config()
-        return config.aip.public_url
-    except Exception:
-        return "http://api.aip.unibase.com"
 
 
 # Type aliases
@@ -278,7 +265,7 @@ def expose_as_a2a(
 
     # Resolve account integration settings
     resolved_user_id = user_id or os.getenv("AIP_USER_ID")
-    resolved_aip_endpoint = aip_endpoint or _get_default_aip_endpoint()
+    resolved_aip_endpoint = aip_endpoint or get_default_aip_endpoint()
 
     # Use default cost_model if not provided
     resolved_cost_model = cost_model or CostModel(base_call_fee=0.001)
