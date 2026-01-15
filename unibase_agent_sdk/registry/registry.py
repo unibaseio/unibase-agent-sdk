@@ -30,7 +30,7 @@ def _get_default_aip_endpoint() -> str:
         config = get_config()
         return config.aip.public_url
     except Exception:
-        return "http://localhost:8001"
+        return "http://api.aip.unibase.com"
 
 
 class RegistrationMode(Enum):

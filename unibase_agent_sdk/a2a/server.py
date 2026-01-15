@@ -8,6 +8,7 @@ import uuid
 
 from ..core.exceptions import TaskExecutionError, InitializationError
 from ..utils.logger import get_logger
+from ..wrappers.generic import _get_default_aip_endpoint
 
 logger = get_logger("a2a.server")
 
@@ -580,7 +581,7 @@ class A2AServer:
             import httpx
             from datetime import datetime
 
-            aip_endpoint = self.registration_config.get("aip_endpoint", "http://localhost:8001")
+            aip_endpoint = self.registration_config.get("aip_endpoint", _get_default_aip_endpoint())
             agent_id = self._agent_id or f"erc8004:{self.registration_config.get('handle', '')}"
 
             # Query AIP for recent events for this agent
