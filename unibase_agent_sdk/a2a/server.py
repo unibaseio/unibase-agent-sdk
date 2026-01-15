@@ -549,12 +549,19 @@ class A2AServer:
                 for s in config.get("skills", [])
             ]
 
+            # Import CostModel to reconstruct from dict
+            from aip_sdk.types import CostModel
+            cost_model_data = config.get("cost_model", {})
+            cost_model = CostModel.from_dict(cost_model_data) if cost_model_data else CostModel()
+
             agent_config = AgentConfig(
                 name=config["name"],
                 handle=handle,
                 description=config.get("description", ""),
                 endpoint_url=f"http://{self.host}:{self.port}",
                 skills=skills,
+                cost_model=cost_model,
+                currency=config.get("currency", "USD"),
             )
 
             # Register with platform
