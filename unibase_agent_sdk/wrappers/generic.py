@@ -195,6 +195,7 @@ def expose_as_a2a(
     # Pricing via cost_model
     cost_model: CostModel = None,
     currency: str = "USD",
+    endpoint_url: str = None,
     **kwargs,
 ) -> A2AServer:
     """Expose ANY callable as an A2A-compatible agent service.
@@ -282,6 +283,7 @@ def expose_as_a2a(
             "skills": [{"id": s.id, "name": s.name, "description": s.description} for s in skills],
             "cost_model": resolved_cost_model.to_dict(),
             "currency": currency,
+            "endpoint_url": endpoint_url,
         }
 
     # Create and return server

@@ -335,24 +335,21 @@ class A2AServer:
 
         self._tasks[task_id] = task
 
-        # Return the last agent message for compatibility with A2A middleware
-        # The middleware expects result.kind === "message" to extract text
-        # If we return a Task, it JSON.stringifies the whole object
-        if history:
-            last_agent_messages = [m for m in history if m.role == Role.agent]
-            if last_agent_messages:
-                response_data = last_agent_messages[-1].model_dump(by_alias=True, exclude_none=True)
+        # Return Task object (standard A2A protocol)
+        # Add AIP events to task metadata
+        aip_events = await self._get_aip_events()
+        if aip_events:
+            task_metadata = task.metadata or {}
+            task_metadata["aip_events"] = aip_events
+            task = Task(
+                id=task.id,
+                context_id=task.context_id,
+                status=task.status,
+                history=task.history,
+                artifacts=task.artifacts,
+                metadata=task_metadata,
+            )
 
-                # Add AIP events to response metadata for AG-UI protocol
-                aip_events = await self._get_aip_events()
-                if aip_events:
-                    if "metadata" not in response_data or response_data["metadata"] is None:
-                        response_data["metadata"] = {}
-                    response_data["metadata"]["aip_events"] = aip_events
-
-                return response_data
-
-        # Fallback: return task if no agent message found
         return self._serialize_task(task)
 
     async def _handle_message_stream(
@@ -531,6 +528,7 @@ class A2AServer:
         aip_endpoint = config["aip_endpoint"]
         handle = config["handle"]
 
+        logger.info(f"[DEBUG] Registration config endpoint_url: {config.get('endpoint_url')}")
         logger.info(f"Registering agent with AIP platform at {aip_endpoint}")
         logger.info(f"  User ID: {user_id}")
         logger.info(f"  Handle: erc8004:{handle}")
@@ -558,7 +556,7 @@ class A2AServer:
                 name=config["name"],
                 handle=handle,
                 description=config.get("description", ""),
-                endpoint_url=f"http://{self.host}:{self.port}",
+                endpoint_url=config.get("endpoint_url") or f"http://{self.host}:{self.port}",
                 skills=skills,
                 cost_model=cost_model,
                 currency=config.get("currency", "USD"),
