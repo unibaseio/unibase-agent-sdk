@@ -70,4 +70,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.uv.sources]
+# For production: install from GitHub
 unibase-aip-sdk = { git = "https://github.com/unibaseio/unibase-aip-sdk.git" }
+
+# For local development: comment out the line above and uncomment below
+# unibase-aip-sdk = { path = "../unibase-aip-sdk", editable = true }
