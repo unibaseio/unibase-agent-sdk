@@ -13,7 +13,7 @@ All examples follow the same pattern:
 3. Run the server
 
 Requirements:
-    pip install anthropic openai google-generativeai
+    uv pip install anthropic openai google-generativeai
 
 Environment Variables:
     ANTHROPIC_API_KEY - For Claude examples
@@ -39,7 +39,7 @@ async def claude_handler(input_text: str) -> str:
     try:
         import anthropic
     except ImportError:
-        return "Error: pip install anthropic"
+        return "Error: uv pip install anthropic"
 
     client = anthropic.AsyncAnthropic()
     response = await client.messages.create(
@@ -55,7 +55,7 @@ async def claude_streaming_handler(input_text: str) -> AsyncIterator[str]:
     try:
         import anthropic
     except ImportError:
-        yield "Error: pip install anthropic"
+        yield "Error: uv pip install anthropic"
         return
 
     client = anthropic.AsyncAnthropic()
@@ -77,7 +77,7 @@ async def openai_handler(input_text: str) -> str:
     try:
         from openai import AsyncOpenAI
     except ImportError:
-        return "Error: pip install openai"
+        return "Error: uv pip install openai"
 
     client = AsyncOpenAI()
     response = await client.chat.completions.create(
@@ -93,7 +93,7 @@ async def openai_streaming_handler(input_text: str) -> AsyncIterator[str]:
     try:
         from openai import AsyncOpenAI
     except ImportError:
-        yield "Error: pip install openai"
+        yield "Error: uv pip install openai"
         return
 
     client = AsyncOpenAI()
@@ -117,7 +117,7 @@ async def gemini_handler(input_text: str) -> str:
     try:
         import google.generativeai as genai
     except ImportError:
-        return "Error: pip install google-generativeai"
+        return "Error: uv pip install google-generativeai"
 
     genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
     model = genai.GenerativeModel("gemini-2.0-flash")
