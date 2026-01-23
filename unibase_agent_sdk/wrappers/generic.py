@@ -41,36 +41,47 @@ logger = get_logger("wrappers.generic")
 
 def parse_agent_message(message: Message) -> AgentMessage:
     """Parse an A2A Message into AgentMessage format."""
-    # First try the standard method
-    # return AgentMessage.from_a2a_message(message)
-    # if agent_msg.intent:
-    #     return agent_msg
 
-    # If intent is empty, it might be due to RootModel parts (a2a-sdk v0.3+)
-    # We manually extract text here
-    
+    print(f"DEBUG parse_agent_message: message type = {type(message)}")
+    print(f"DEBUG parse_agent_message: hasattr parts = {hasattr(message, 'parts')}")
+    if hasattr(message, 'parts'):
+        print(f"DEBUG parse_agent_message: message.parts type = {type(message.parts)}")
+        print(f"DEBUG parse_agent_message: message.parts length = {len(message.parts) if message.parts else 0}")
+
     text_parts = []
-    print(f"DEBUG: message.parts type: {type(message.parts)}")
-    for i, part in enumerate(message.parts):
-        print(f"DEBUG: part[{i}] type: {type(part)}")
-        print(f"DEBUG: part[{i}] dir: {dir(part)}")
-        
-        # Handle Pydantic RootModel (part.root)
-        target = part.root if hasattr(part, "root") else part
-        print(f"DEBUG: target type: {type(target)}")
-        if hasattr(target, "root"):
-             print("DEBUG: target still has root attribute")
 
-        if hasattr(target, "text"):
-            val = getattr(target, "text")
-            print(f"DEBUG: target.text: {val}")
-            if val:
-                text_parts.append(val)
-        else:
-             print("DEBUG: target has no 'text' attribute")
-            
+    # message.parts should be a list of Part objects (RootModel wrappers)
+    # Each Part.root gives us the actual TextPart | FilePart | DataPart
+    if hasattr(message, 'parts') and message.parts:
+        for i, part in enumerate(message.parts):
+            print(f"DEBUG parse_agent_message: part[{i}] type = {type(part)}")
+            print(f"DEBUG parse_agent_message: part[{i}] hasattr root = {hasattr(part, 'root')}")
+
+            # Part is a RootModel, access .root to get the actual part object
+            if hasattr(part, 'root'):
+                actual_part = part.root
+                print(f"DEBUG parse_agent_message: actual_part type = {type(actual_part)}")
+            else:
+                actual_part = part
+                print(f"DEBUG parse_agent_message: using part directly, type = {type(actual_part)}")
+
+            # Check if it's a TextPart by checking for 'text' attribute and 'kind' == 'text'
+            print(f"DEBUG parse_agent_message: hasattr kind = {hasattr(actual_part, 'kind')}")
+            if hasattr(actual_part, 'kind'):
+                print(f"DEBUG parse_agent_message: actual_part.kind = {actual_part.kind}")
+
+            if hasattr(actual_part, 'kind') and actual_part.kind == 'text':
+                print(f"DEBUG parse_agent_message: hasattr text = {hasattr(actual_part, 'text')}")
+                if hasattr(actual_part, 'text'):
+                    text_val = actual_part.text
+                    print(f"DEBUG parse_agent_message: text value = {text_val}")
+                    print(f"DEBUG parse_agent_message: text type = {type(text_val)}")
+                    if isinstance(text_val, str):
+                        text_parts.append(text_val)
+                        print(f"DEBUG parse_agent_message: appended text to text_parts")
+
     text = " ".join(text_parts)
-    print(f"DEBUG: Extracted text: '{text}'")
+    print(f"DEBUG parse_agent_message: final extracted text = '{text}'")
     
     # Logic similar to AgentMessage.from_a2a_message
     try:
@@ -118,31 +129,19 @@ def _create_task_handler(
 ) -> Callable[[Task, Message], AsyncIterator[StreamResponse]]:
     """Create an A2A task handler from a simple function.
 
-    The handler receives the raw user intent from the AgentMessage format.
-    For more control, agents can use the AgentMessage type directly.
+    The handler receives plain text extracted from the A2A Message.
+    The wrapper handles all Message format conversions.
     """
 
     is_async = asyncio.iscoroutinefunction(handler)
     is_async_gen = inspect.isasyncgenfunction(handler)
 
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
-        # Parse message using AgentMessage format
-        # Use our local helper which handles RootModel parts correctly
-        agent_message = parse_agent_message(message)
+        # Extract text directly using A2A SDK utility
+        input_text = get_message_text(message)
 
-        # Pass the intent to the handler (the raw user request)
-        input_text = agent_message.intent
-
-        # Log context for debugging
-        logger.debug(
-            "Processing request",
-            extra={
-                "intent": input_text[:100] if input_text else None,
-                "run_id": agent_message.context.run_id,
-                "caller": agent_message.context.caller_id,
-                "has_hints": agent_message.hints is not None,
-            }
-        )
+        # Log for debugging
+        logger.debug(f"Processing request: {input_text[:100] if input_text else 'empty'}")
 
         if streaming:
             # Streaming handler
@@ -151,14 +150,11 @@ def _create_task_handler(
                     response_msg = create_text_message_object(Role.agent, chunk)
                     yield StreamResponse(message=response_msg)
             elif is_async:
-                # Limit case: async function returning iterable? (unlikely for streaming)
-                # But if so, await it first
                 result = await handler(input_text)
                 for chunk in result:
                      response_msg = create_text_message_object(Role.agent, chunk)
                      yield StreamResponse(message=response_msg)
             else:
-                # Sync streaming (returns list)
                 for chunk in handler(input_text):
                     response_msg = create_text_message_object(Role.agent, chunk)
                     yield StreamResponse(message=response_msg)
@@ -167,7 +163,6 @@ def _create_task_handler(
             if is_async:
                 result = await handler(input_text)
             else:
-                # Run sync function in executor to avoid blocking
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, handler, input_text)
 
@@ -190,6 +185,7 @@ def expose_as_a2a(
     # Account integration
     user_id: str = None,
     aip_endpoint: str = None,
+    gateway_url: str = None,
     handle: str = None,
     auto_register: bool = True,
     # Pricing via cost_model
@@ -272,11 +268,13 @@ def expose_as_a2a(
     resolved_cost_model = cost_model or CostModel(base_call_fee=0.001)
 
     # Create registration config if user_id is provided
+    # Config is needed for both registration AND Gateway polling
     registration_config = None
-    if resolved_user_id and auto_register:
+    if resolved_user_id and (auto_register or gateway_url):
         registration_config = {
             "user_id": resolved_user_id,
             "aip_endpoint": resolved_aip_endpoint,
+            "gateway_url": gateway_url,
             "handle": handle,
             "name": name,
             "description": description,
@@ -293,6 +291,7 @@ def expose_as_a2a(
         host=host,
         port=port,
         registration_config=registration_config,
+        auto_register=auto_register,
     )
 
 

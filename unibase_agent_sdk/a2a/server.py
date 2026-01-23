@@ -39,6 +39,7 @@ class A2AServer:
         host: str = "0.0.0.0",
         port: int = 8000,
         registration_config: Optional[Dict[str, Any]] = None,
+        auto_register: bool = True,
     ):
         """Initialize A2A server."""
         self.agent_card = agent_card
@@ -46,6 +47,7 @@ class A2AServer:
         self.host = host
         self.port = port
         self.registration_config = registration_config
+        self.auto_register = auto_register
 
         # Task storage (in-memory for now)
         self._tasks: Dict[str, Task] = {}
@@ -53,6 +55,10 @@ class A2AServer:
         # Registration state
         self._agent_id: Optional[str] = None
         self._aip_client = None
+
+        # Gateway polling state
+        self._polling_task: Optional[asyncio.Task] = None
+        self._should_poll = False
 
         # Create FastAPI app
         self._app = None
@@ -86,13 +92,32 @@ class A2AServer:
             logger.info(f"A2A Server starting at http://{self.host}:{self.port}")
             logger.info(f"Agent Card: http://{self.host}:{self.port}/.well-known/agent.json")
 
-            # Register with AIP platform if configured
-            if self.registration_config:
+            # Register with AIP platform if configured and auto_register is True
+            if self.registration_config and self.auto_register:
                 await self._register_with_aip()
+
+            # Start Gateway polling if endpoint_url is None (private mode)
+            if self.registration_config:
+                endpoint_url = self.registration_config.get("endpoint_url")
+                gateway_url = self.registration_config.get("gateway_url")
+
+                if endpoint_url is None and gateway_url:
+                    logger.info(f"Starting Gateway polling mode (private agent)")
+                    logger.info(f"  Gateway URL: {gateway_url}")
+                    logger.info(f"  Agent Handle: {self.registration_config.get('handle')}")
+                    self._should_poll = True
+                    self._polling_task = asyncio.create_task(self._gateway_polling_loop())
 
             yield
 
             # Cleanup on shutdown
+            self._should_poll = False
+            if self._polling_task:
+                self._polling_task.cancel()
+                try:
+                    await self._polling_task
+                except asyncio.CancelledError:
+                    pass
             if self._aip_client:
                 await self._aip_client.close()
             logger.info("A2A Server shutting down")
@@ -552,11 +577,16 @@ class A2AServer:
             cost_model_data = config.get("cost_model", {})
             cost_model = CostModel.from_dict(cost_model_data) if cost_model_data else CostModel()
 
+            # Two modes:
+            # - endpoint_url=None: polling mode (private agent behind firewall)
+            # - endpoint_url=<URL>: push mode (public agent)
+            endpoint_url = config.get("endpoint_url")
+
             agent_config = AgentConfig(
                 name=config["name"],
                 handle=handle,
                 description=config.get("description", ""),
-                endpoint_url=config.get("endpoint_url") or f"http://{self.host}:{self.port}",
+                endpoint_url=endpoint_url,
                 skills=skills,
                 cost_model=cost_model,
                 currency=config.get("currency", "USD"),
@@ -571,6 +601,98 @@ class A2AServer:
         except Exception as e:
             logger.warning(f"AIP registration failed (agent will run without registration): {e}")
             # Don't fail startup - agent can still work without platform registration
+
+    async def _gateway_polling_loop(self):
+        """Poll Gateway for tasks (for private agents behind firewall)."""
+        try:
+            import httpx
+        except ImportError:
+            logger.error("httpx is required for Gateway polling")
+            return
+
+        config = self.registration_config
+        gateway_url = config.get("gateway_url")
+        handle = config.get("handle")
+        poll_interval = 3.0  # Poll every 3 seconds
+
+        logger.info(f"Starting Gateway polling loop for agent {handle}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            while self._should_poll:
+                try:
+                    # Poll for tasks
+                    response = await client.get(
+                        f"{gateway_url}/gateway/tasks/poll",
+                        params={"agent": handle, "timeout": 5.0}
+                    )
+
+                    if response.status_code == 200:
+                        task_data = response.json()
+                        task_id = task_data.get("task_id")
+
+                        if task_id:
+                            logger.info(f"Received task {task_id} from Gateway")
+
+                            # Process the task
+                            await self._process_gateway_task(task_id, task_data, gateway_url, client)
+                        else:
+                            # No task available
+                            await asyncio.sleep(poll_interval)
+                    else:
+                        # Poll failed, wait and retry
+                        logger.debug(f"Poll returned {response.status_code}, retrying...")
+                        await asyncio.sleep(poll_interval)
+
+                except Exception as e:
+                    logger.error(f"Error in polling loop: {e}")
+                    await asyncio.sleep(poll_interval)
+
+        logger.info("Gateway polling loop stopped")
+
+    async def _process_gateway_task(self, task_id: str, task_data: Dict, gateway_url: str, client):
+        """Process a task received from Gateway."""
+        try:
+            # Extract payload
+            payload = task_data.get("payload", {})
+
+            # Payload should be a complete JSON-RPC request
+            # Extract the params from it
+            rpc_request = {
+                "method": payload.get("method", "message/send"),
+                "params": payload.get("params", {}),  # Extract params from payload
+                "id": payload.get("id")
+            }
+
+            # Handle the request using existing handler
+            result = await self._handle_jsonrpc(rpc_request, rpc_request["id"])
+
+            # Submit result back to Gateway
+            await client.post(
+                f"{gateway_url}/gateway/tasks/complete",
+                json={
+                    "task_id": task_id,
+                    "status": "completed",
+                    "result": result
+                }
+            )
+
+            logger.info(f"Task {task_id} completed and result submitted")
+
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {e}")
+
+            # Submit error result
+            try:
+                await client.post(
+                    f"{gateway_url}/gateway/tasks/complete",
+                    json={
+                        "task_id": task_id,
+                        "status": "failed",
+                        "error": str(e)
+                    }
+                )
+            except Exception as submit_error:
+                logger.error(f"Failed to submit error result: {submit_error}")
 
     async def _get_aip_events(self) -> Optional[list]:
         """Get recent AIP events (payments, memory) for this agent.
