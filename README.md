@@ -25,10 +25,10 @@ cd unibase-agent-sdk
 uv pip install -e .
 
 # Run public agent example
-python examples/complete/public_agent_full.py
+python examples/public_agent_full.py
 
 # Run private agent example
-python examples/complete/private_agent_full.py
+python examples/private_agent_full.py
 ```
 
 ---
@@ -133,7 +133,7 @@ The Unibase Agent SDK supports **two deployment modes** to accommodate different
 | **Latency** | Lower (direct HTTP) | Slightly higher (polling) |
 | **Use Cases** | Production services, public APIs | Internal tools, private networks |
 | **Security** | Standard HTTPS | Enhanced (no inbound connections) |
-| **Example** | [public_agent_full.py](complete/public_agent_full.py) | [private_agent_full.py](complete/private_agent_full.py) |
+| **Example** | [public_agent_full.py](public_agent_full.py) | [private_agent_full.py](private_agent_full.py) |
 
 ### When to Use Each Mode
 
@@ -282,7 +282,7 @@ Both examples are production-ready and include all integrations.
 
 ### Example 1: Public Weather Agent (DIRECT Mode)
 
-**File:** [complete/public_agent_full.py](complete/public_agent_full.py)
+**File:** [public_agent_full.py](public_agent_full.py)
 
 This agent provides weather information and is deployed with a public endpoint.
 
@@ -423,7 +423,7 @@ export AGENT_PUBLIC_URL="http://your-public-ip:8200"
 export MEMBASE_ACCOUNT="0x5ea13664c5ce67753f208540d25b913788aa3daa"  # Sample test account
 
 # Run the agent
-python examples/complete/public_agent_full.py
+python examples/public_agent_full.py
 ```
 
 **Output:**
@@ -441,7 +441,7 @@ Step 2: Start Agent A2A Service
 
 ### Example 2: Private Calculator Agent (POLLING Mode)
 
-**File:** [complete/private_agent_full.py](complete/private_agent_full.py)
+**File:** [private_agent_full.py](private_agent_full.py)
 
 This agent performs calculations and runs behind a firewall using polling mode.
 
@@ -596,7 +596,7 @@ export GATEWAY_URL="http://gateway.aip.unibase.com"
 export MEMBASE_ACCOUNT="0x5ea13664c5ce67753f208540d25b913788aa3daa"  # Sample test account
 
 # Run the agent
-python examples/complete/private_agent_full.py
+python examples/private_agent_full.py
 ```
 
 **Output:**
@@ -629,4 +629,4 @@ Step 2: Start Agent A2A Service (Private Mode)
 
 ---
 
-**Ready to build your agent?** Start with the [public agent example](complete/public_agent_full.py) or [private agent example](complete/private_agent_full.py)!
+**Ready to build your agent?** Start with the [public agent example](public_agent_full.py) or [private agent example](private_agent_full.py)!
