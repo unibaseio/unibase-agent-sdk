@@ -1,421 +1,632 @@
-# Unibase Agent SDK
+# Unibase Agent SDK Examples
 
-**Build production-ready AI agents with A2A protocol compliance**
+Complete guide to building AI agents on the Unibase AIP platform.
 
-The Agent SDK provides a zero-boilerplate framework for exposing any Python function, class, or existing AI agent as a standardized A2A-compatible service that integrates seamlessly with the Unibase ecosystem.
+## Table of Contents
 
-## What Problem Does This Solve?
+1. [Quick Start](#quick-start)
+2. [Getting Started](#getting-started)
+3. [Environment Setup](#environment-setup)
+4. [Test Account](#test-account)
+5. [Agent Development Workflow](#agent-development-workflow)
+6. [Deployment Modes](#deployment-modes)
+7. [Architecture](#architecture)
+8. [Tutorial: Building Your First Agent](#tutorial-building-your-first-agent)
+9. [Reference](#reference)
 
-Building interoperable AI agents is complex. You need to:
-- ❌ Implement protocol-compliant endpoints (JSON-RPC, SSE)
-- ❌ Handle agent card discovery (`.well-known/agent.json`)
-- ❌ Manage registration with agent platforms
-- ❌ Deal with streaming, serialization, error handling
-- ❌ Learn framework-specific abstractions
-
-**Agent SDK eliminates all of this.** Wrap your code in one function call and get a production-ready, A2A-compliant agent server.
-
-## Key Value Propositions
-
-### 1. **Zero Boilerplate**
-```python
-# Your existing code
-def translate(text: str, target_lang: str) -> str:
-    return my_translation_model(text, target_lang)
-
-# Expose as A2A agent - ONE function call
-from unibase_agent_sdk import expose_as_a2a
-
-server = expose_as_a2a("Translator", translate, port=8100)
-server.run_sync()
-
-# That's it. Your agent is now:
-# ✓ A2A protocol compliant
-# ✓ Auto-discoverable
-# ✓ Integrated with AIP platform
-# ✓ Ready for production
-```
-
-### 2. **Framework Agnostic**
-Works with ANY Python code - no lock-in:
-- ✅ Plain Python functions
-- ✅ OpenAI, Anthropic, Google SDKs
-- ✅ LangChain, LangGraph agents
-- ✅ Custom ML models
-- ✅ Existing agent frameworks
-
-### 3. **A2A Protocol Compliance**
-Automatic implementation of:
-- Google A2A Agent Card (`.well-known/agent.json`)
-- JSON-RPC 2.0 endpoints (`/a2a`)
-- Server-Sent Events for streaming (`/a2a/stream`)
-- Task and skill definitions
-- Error handling and status codes
-
-### 4. **Platform Integration**
-Seamless integration with Unibase AIP:
-- Auto-registration with agent registry
-- Payment collection via X402
-- Execution tracking and logging
-- Gateway routing for remote access
-
-## Installation
-
-Install from source:
-
-```bash
-# Clone the SDK repository
-git clone https://github.com/unibaseio/unibase-agent-sdk.git
-cd unibase-agent-sdk
-
-# Install in editable mode
-uv pip install -e .
-```
+---
 
 ## Quick Start
 
-### Expose Any Function
+```bash
+# Clone and install Agent SDK
+git clone https://github.com/unibase/unibase-agent-sdk.git
+cd unibase-agent-sdk
+uv pip install -e .
+
+# Run public agent example
+python examples/complete/public_agent_full.py
+
+# Run private agent example
+python examples/complete/private_agent_full.py
+```
+
+---
+
+## Getting Started
+
+### Install Unibase Agent SDK
+
+```bash
+# Clone the repository
+git clone https://github.com/unibase/unibase-agent-sdk.git
+cd unibase-agent-sdk
+
+# Install with uv
+uv pip install -e .
+```
+
+The Agent SDK will automatically install the AIP SDK as a dependency
+
+---
+
+## Environment Setup
+
+### Required Environment Variables
+
+Set these variables before running any agent:
+
+```bash
+# AIP Platform endpoint
+export AIP_ENDPOINT="http://api.aip.unibase.com"
+
+# Gateway endpoint
+export GATEWAY_URL="http://gateway.aip.unibase.com"
+```
+
+### Optional Environment Variables
+
+For public agents (DIRECT mode):
+
+```bash
+# Your agent's publicly accessible URL
+export AGENT_PUBLIC_URL="http://your-public-ip:8200"
+```
+
+---
+
+## Test Account
+
+### Provided Test Credentials
+
+We provide a **test account** with pre-loaded test tokens for experimentation:
+
+```bash
+# Sample test account (shared for demo purposes only)
+export MEMBASE_ACCOUNT="0x5ea13664c5ce67753f208540d25b913788aa3daa"
+```
+
+### What You Can Do with the Test Account
+
+✅ **Register agents** - Deploy test agents on the AIP platform
+✅ **Process payments** - Handle X402 micropayments for agent calls
+✅ **Store memory** - Use Membase for conversation context
+✅ **Test features** - Try all platform capabilities
+
+⚠️ **Important**: This is a **shared test account** for demonstration only. Do **not** use for production or store real value.
+
+---
+
+## Agent Development Workflow
+
+Building an agent with the Unibase Agent SDK follows four key steps:
+
+### Step 1: Implement Agent Logic
+
+Write your agent's core business logic as an async handler function that processes user messages and returns responses.
+
+### Step 2: Configure Agent Metadata
+
+Define your agent's identity (name, handle, description), capabilities, skills, and pricing model using the `AgentConfig` class.
+
+### Step 3: Register with AIP Platform
+
+Register your agent on-chain with the AIP platform using the `AsyncAIPClient`, which generates a unique agent ID.
+
+### Step 4: Start Agent Service
+
+Expose your agent via the A2A protocol using `expose_as_a2a()`, which starts the service and handles routing, payments, and memory automatically
+
+---
+
+## Deployment Modes
+
+The Unibase Agent SDK supports **two deployment modes** to accommodate different network environments:
+
+### Mode Comparison
+
+| Aspect | Public (DIRECT) | Private (POLLING) |
+|--------|----------------|-------------------|
+| **Public Endpoint** | Required | Not needed |
+| **Network Access** | Must be accessible from internet | Can be behind firewall/NAT |
+| **Routing Method** | Gateway calls agent directly | Agent polls gateway for tasks |
+| **Latency** | Lower (direct HTTP) | Slightly higher (polling) |
+| **Use Cases** | Production services, public APIs | Internal tools, private networks |
+| **Security** | Standard HTTPS | Enhanced (no inbound connections) |
+| **Example** | [public_agent_full.py](complete/public_agent_full.py) | [private_agent_full.py](complete/private_agent_full.py) |
+
+### When to Use Each Mode
+
+**Use DIRECT Mode (Public Agent) when:**
+- ✅ Your agent has a public IP address or domain
+- ✅ Deploying to production with stable infrastructure
+- ✅ Low latency is critical
+- ✅ Running in cloud with public endpoints (AWS, GCP, Azure)
+
+**Use POLLING Mode (Private Agent) when:**
+- ✅ Agent is behind corporate firewall
+- ✅ No public IP available (NAT, private network)
+- ✅ Enhanced security is required (no inbound connections)
+- ✅ Running on local machine or private network
+
+---
+
+## Architecture
+
+### Public Agent (DIRECT Mode) Architecture
+
+```
+┌─────────────┐
+│   Client    │
+└──────┬──────┘
+       │ 1. Send request
+       ↓
+┌──────────────────┐
+│  AIP Platform    │
+└──────┬───────────┘
+       │ 2. Route to Gateway
+       ↓
+┌──────────────────┐
+│    Gateway       │
+└──────┬───────────┘
+       │ 3. HTTP POST to agent endpoint
+       │ (http://your-ip:8200/invoke)
+       ↓
+┌──────────────────┐
+│  Your Agent      │ ← Public endpoint required
+│  (DIRECT mode)   │
+└──────┬───────────┘
+       │ 4. Process & respond
+       ↓
+┌──────────────────┐
+│    Gateway       │
+└──────┬───────────┘
+       │ 5. Return result
+       ↓
+┌──────────────────┐
+│  AIP Platform    │
+└──────┬───────────┘
+       │ 6. Return to client
+       ↓
+┌──────────────────┐
+│    Client        │
+└──────────────────┘
+```
+
+**Configuration:**
+```python
+endpoint_url = "http://your-public-ip:8200"  # Required
+```
+
+### Private Agent (POLLING Mode) Architecture
+
+```
+┌─────────────┐
+│   Client    │
+└──────┬──────┘
+       │ 1. Send request
+       ↓
+┌──────────────────┐
+│  AIP Platform    │
+└──────┬───────────┘
+       │ 2. Route to Gateway
+       ↓
+┌──────────────────┐
+│    Gateway       │
+│  [Task Queue]    │ ← 3. Queue task
+└──────┬───────────┘
+       ↑
+       │ 4. Poll for tasks (every 2-5 seconds)
+       │
+┌──────────────────┐
+│  Your Agent      │ ← No public endpoint needed
+│  (POLLING mode)  │    (behind firewall OK)
+└──────┬───────────┘
+       │ 5. Process task
+       │ 6. Submit result
+       ↓
+┌──────────────────┐
+│    Gateway       │
+└──────┬───────────┘
+       │ 7. Return result
+       ↓
+┌──────────────────┐
+│  AIP Platform    │
+└──────┬───────────┘
+       │ 8. Return to client
+       ↓
+┌──────────────────┐
+│    Client        │
+└──────────────────┘
+```
+
+**Configuration:**
+```python
+endpoint_url = None  # Triggers polling mode
+```
+
+### How They Work Together with Unibase AIP
+
+Both modes integrate seamlessly with the Unibase AIP platform:
+
+1. **On-chain Registration (ERC-8004)**
+   - Agent metadata stored on blockchain
+   - Immutable agent identity
+   - Discoverable by clients
+
+2. **X402 Payment Protocol**
+   - Automatic micropayment handling
+   - Payment settled on each call
+   - Transparent pricing
+
+3. **Membase Memory Integration**
+   - Conversation context stored automatically
+   - Accessible across sessions
+   - Privacy-preserving
+
+4. **A2A Protocol**
+   - Standard message format
+   - Interoperable with other agents
+   - Easy agent-to-agent communication
+
+---
+
+## Tutorial: Building Your First Agent
+
+We'll build **two complete agents** step-by-step:
+
+1. **Weather Agent** (Public/DIRECT mode) - Provides weather information
+2. **Calculator Agent** (Private/POLLING mode) - Performs calculations
+
+Both examples are production-ready and include all integrations.
+
+### Example 1: Public Weather Agent (DIRECT Mode)
+
+**File:** [complete/public_agent_full.py](complete/public_agent_full.py)
+
+This agent provides weather information and is deployed with a public endpoint.
+
+#### Step 1: Define Agent Business Logic
+
+```python
+class WeatherAgent:
+    """Weather information agent."""
+
+    def __init__(self):
+        self.name = "Weather Agent"
+        self.memory = {}
+
+    async def handle(self, message_text: str) -> str:
+        """Handle weather queries."""
+        # Extract city from message
+        city = self.extract_city(message_text)
+
+        # Get weather data (mock or from real API)
+        weather = self.get_weather(city)
+
+        # Format response
+        response = f"🌤️ Weather in {city}\n"
+        response += f"Temperature: {weather['temp']}°C\n"
+        response += f"Condition: {weather['condition']}\n"
+
+        return response
+```
+
+#### Step 2: Configure Agent Metadata
+
+```python
+from aip_sdk import AgentConfig, SkillConfig, CostModel
+
+# Define skills
+skills = [
+    SkillConfig(
+        id="weather.query",
+        name="Weather Query",
+        description="Get current weather information for any city",
+        tags=["weather", "forecast", "temperature"],
+        examples=[
+            "What's the weather in Tokyo?",
+            "Tell me the forecast for Paris",
+        ],
+    )
+]
+
+# Define pricing
+cost_model = CostModel(
+    base_call_fee=0.001,      # $0.001 per call
+    per_token_fee=0.00001,    # Per token fee
+)
+
+# Create configuration
+agent_config = AgentConfig(
+    name="Public Weather Agent",
+    description="Provides weather information",
+    handle="weather_public",
+    capabilities=["streaming", "batch", "memory"],
+    skills=skills,
+    cost_model=cost_model,
+    endpoint_url="http://your-public-ip:8200",  # Public endpoint
+    metadata={
+        "version": "1.0.0",
+        "mode": "public",
+    },
+)
+```
+
+#### Step 3: Register Agent
+
+```python
+async def register_agent(user_wallet: str) -> str:
+    """Register agent with AIP platform."""
+    aip_endpoint = os.environ.get("AIP_ENDPOINT")
+    user_id = f"user:{user_wallet}"
+
+    async with AsyncAIPClient(base_url=aip_endpoint) as client:
+        # Check platform health
+        is_healthy = await client.health_check()
+        if not is_healthy:
+            raise RuntimeError("AIP platform not available")
+
+        # Register agent
+        result = await client.register_agent(user_id, agent_config)
+        agent_id = result["agent_id"]
+
+        print(f"✓ Agent registered: {agent_id}")
+        return agent_id
+
+# Run registration
+agent_id = asyncio.run(register_agent(wallet_address))
+```
+
+#### Step 4: Start Agent Service
 
 ```python
 from unibase_agent_sdk import expose_as_a2a
 
-def calculator(expression: str) -> str:
-    """Safe calculator that evaluates math expressions."""
-    result = eval(expression, {"__builtins__": {}}, {})
-    return f"Result: {result}"
+def start_agent(user_wallet: str, agent_id: str):
+    """Start agent service."""
+    weather_agent = WeatherAgent()
 
-# One line to create an A2A agent server
-server = expose_as_a2a(
-    name="Calculator",
-    handler=calculator,
-    description="Evaluates mathematical expressions",
-    port=8100
-)
+    server = expose_as_a2a(
+        name="Public Weather Agent",
+        handler=weather_agent.handle,
+        port=8200,
+        host="0.0.0.0",
+        description="Weather information agent",
+        skills=skills,
+        streaming=False,
 
-server.run_sync()
-```
+        # Integration config
+        user_id=f"user:{user_wallet}",
+        aip_endpoint=os.environ.get("AIP_ENDPOINT"),
+        gateway_url=os.environ.get("GATEWAY_URL"),
+        handle="weather_public",
+        cost_model=cost_model,
+        endpoint_url="http://your-public-ip:8200",
 
-**Your agent is now live at:**
-- `http://localhost:8100/.well-known/agent.json` - Agent Card
-- `http://localhost:8100/a2a` - JSON-RPC endpoint
-- `http://localhost:8100/health` - Health check
-
-### Async & Streaming Support
-
-```python
-from typing import AsyncIterator
-
-# Async handler
-async def llm_agent(prompt: str) -> str:
-    response = await openai.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
-
-server = expose_as_a2a("LLM Agent", llm_agent, port=8100)
-await server.run()
-
-# Streaming handler
-async def streaming_agent(text: str) -> AsyncIterator[str]:
-    for word in text.split():
-        yield word + " "
-        await asyncio.sleep(0.1)
-
-server = expose_as_a2a(
-    "Streaming Agent",
-    streaming_agent,
-    streaming=True,
-    port=8100
-)
-```
-
-### Register with AIP Platform
-
-```python
-# Automatic platform registration
-server = expose_as_a2a(
-    name="My Agent",
-    handler=my_handler,
-    port=8100,
-    user_id="user:0x123...",        # Your user ID
-    auto_register=True               # Auto-register with AIP
-)
-
-# Now discoverable via AIP platform:
-# - Other applications can find your agent
-# - Automatic payment collection enabled
-# - Execution metrics tracked
-```
-
-## Core Concepts
-
-### 1. Wrap Any Code
-
-The SDK provides multiple wrapping strategies:
-
-**Functions:**
-```python
-def process(text: str) -> str:
-    return text.upper()
-
-expose_as_a2a("Processor", process)
-```
-
-**Classes:**
-```python
-class MyAgent:
-    def process(self, text: str) -> str:
-        return text.upper()
-
-agent = MyAgent()
-wrapper = wrap_agent(agent, "MyAgent", method="process")
-wrapper.serve_sync(port=8100)
-```
-
-**Existing LLM SDKs:**
-```python
-# Works with OpenAI, Anthropic, Google, etc.
-async def claude_handler(prompt: str) -> str:
-    import anthropic
-    client = anthropic.AsyncAnthropic()
-    response = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.content[0].text
-
-expose_as_a2a("Claude Agent", claude_handler)
-```
-
-### 2. A2A Protocol Endpoints
-
-Every agent automatically gets:
-
-| Endpoint | Protocol | Purpose |
-|----------|----------|---------|
-| `/.well-known/agent.json` | GET | Agent Card (discovery) |
-| `/a2a` | POST | Execute task (JSON-RPC 2.0) |
-| `/a2a/stream` | POST | Stream task (SSE) |
-| `/health` | GET | Health check |
-
-### 3. Agent-to-Agent Communication
-
-Agents can call other agents through AIP:
-
-```python
-from aip_sdk.types import AgentContext
-
-async def handle_task(task: Task, message: Message, context: AgentContext):
-    # Call another agent
-    result = await context.call_agent_with_intent(
-        agent_id="weather.forecast",
-        intent="Get weather for Tokyo",
-        reason="User requested weather information"
+        auto_register=False,  # Already registered
     )
 
-    # All calls go through AIP for:
-    # - Payment tracking
-    # - Caller chain tracking
-    # - Automatic logging
+    print("✓ Agent running on http://0.0.0.0:8200")
+    print("✓ Ready to accept requests via Gateway")
 
-    return result.output
+    server.run_sync()
 ```
 
-## Advanced Usage
+#### Step 5: Run the Agent
 
-### Multiple Skills
+```bash
+# Set environment variables
+export AIP_ENDPOINT="http://api.aip.unibase.com"
+export GATEWAY_URL="http://gateway.aip.unibase.com"
+export AGENT_PUBLIC_URL="http://your-public-ip:8200"
+export MEMBASE_ACCOUNT="0x5ea13664c5ce67753f208540d25b913788aa3daa"  # Sample test account
 
-```python
-class MultiSkillAgent:
-    def translate(self, text: str, lang: str) -> str:
-        return f"Translated to {lang}: {text}"
-
-    def summarize(self, text: str) -> str:
-        return f"Summary: {text[:100]}"
-
-agent = MultiSkillAgent()
-wrapper = wrap_agent(
-    agent,
-    "Multi-Skill Agent",
-    methods=["translate", "summarize"]  # Expose multiple skills
-)
-wrapper.serve_sync(port=8100)
+# Run the agent
+python examples/complete/public_agent_full.py
 ```
 
-### Custom Skills Definition
+**Output:**
+```
+Step 1: Register Agent with AIP Platform
+  ✓ Platform is healthy
+  ✓ Agent registered: agent_xyz123
+
+Step 2: Start Agent A2A Service
+  ✓ Agent running on http://0.0.0.0:8200
+  ✓ Ready to accept requests via Gateway
+```
+
+---
+
+### Example 2: Private Calculator Agent (POLLING Mode)
+
+**File:** [complete/private_agent_full.py](complete/private_agent_full.py)
+
+This agent performs calculations and runs behind a firewall using polling mode.
+
+#### Step 1: Define Agent Business Logic
 
 ```python
-from a2a.types import AgentSkill
+class CalculatorAgent:
+    """Mathematical calculator agent."""
 
+    def __init__(self):
+        self.name = "Calculator Agent"
+        self.calculation_history = []
+
+    async def handle(self, message_text: str) -> str:
+        """Handle calculation requests."""
+        # Parse expression
+        expression = self.extract_expression(message_text)
+
+        # Calculate
+        result = self.calculate(expression)
+
+        # Record history
+        self.calculation_history.append({
+            "expression": expression,
+            "result": result,
+        })
+
+        # Format response
+        response = f"🔢 Calculation Result\n"
+        response += f"Expression: {expression}\n"
+        response += f"Result: {result}\n"
+
+        return response
+
+    def calculate(self, expression: str) -> float:
+        """Safely evaluate mathematical expression."""
+        import math
+
+        safe_dict = {
+            "sqrt": math.sqrt,
+            "pow": pow,
+            "abs": abs,
+            "pi": math.pi,
+        }
+
+        result = eval(expression, {"__builtins__": {}}, safe_dict)
+        return float(result)
+```
+
+#### Step 2: Configure Agent Metadata
+
+```python
+# Define skills
 skills = [
-    AgentSkill(
-        id="weather.forecast",
-        name="Weather Forecast",
-        description="Get weather forecast for a location",
-        tags=["weather", "forecast"],
-        examples=["Weather in NYC", "Forecast for London"]
+    SkillConfig(
+        id="calculator.compute",
+        name="Mathematical Computation",
+        description="Perform mathematical calculations",
+        tags=["math", "calculator", "computation"],
+        examples=[
+            "Calculate 25 * 4 + 10",
+            "What is sqrt(144)?",
+            "Compute 2 ** 8",
+        ],
     )
 ]
 
-server = expose_as_a2a(
-    name="Weather Agent",
-    handler=weather_handler,
-    skills=skills
+# Define pricing (cheaper than public agent)
+cost_model = CostModel(
+    base_call_fee=0.0005,     # $0.0005 per call
+    per_token_fee=0.000005,
+)
+
+# Create configuration
+agent_config = AgentConfig(
+    name="Private Calculator Agent",
+    description="Mathematical computation agent",
+    handle="calculator_private",
+    capabilities=["streaming", "batch", "memory"],
+    skills=skills,
+    cost_model=cost_model,
+    endpoint_url=None,  # ← POLLING MODE (no endpoint)
+    metadata={
+        "version": "1.0.0",
+        "mode": "private",
+        "deployment": "gateway_polling",
+    },
 )
 ```
 
-### Pricing Configuration
+#### Step 3: Register Agent
 
 ```python
-from aip_sdk.types import CostModel
+async def register_agent(user_wallet: str) -> str:
+    """Register agent with AIP platform."""
+    aip_endpoint = os.environ.get("AIP_ENDPOINT")
+    user_id = f"user:{user_wallet}"
 
-server = expose_as_a2a(
-    name="Premium Agent",
-    handler=handler,
-    cost_model=CostModel(
-        base_call_fee=0.05,              # $0.05 per call
-        input_cost_per_token=0.00001,
-        output_cost_per_token=0.00003
-    ),
-    user_id="user:0x123...",
-    auto_register=True
-)
+    async with AsyncAIPClient(base_url=aip_endpoint) as client:
+        # Register agent WITHOUT endpoint URL
+        result = await client.register_agent(user_id, agent_config)
+        agent_id = result["agent_id"]
+
+        print(f"✓ Agent registered: {agent_id}")
+        print(f"✓ Mode: POLLING (no public endpoint)")
+        return agent_id
+
+# Run registration
+agent_id = asyncio.run(register_agent(wallet_address))
 ```
 
-## A2A Client (Consuming Agents)
-
-The SDK also includes a client for consuming other A2A agents:
+#### Step 4: Start Agent Service
 
 ```python
-from unibase_agent_sdk import A2AClient
-from a2a.types import Message, Role, TextPart
+def start_agent(user_wallet: str, agent_id: str):
+    """Start agent service in polling mode."""
+    calculator_agent = CalculatorAgent()
 
-async with A2AClient() as client:
-    # Discover agent
-    agent = await client.discover_agent("http://localhost:8100")
-    print(f"Agent: {agent.name}")
-    print(f"Skills: {agent.skills}")
+    server = expose_as_a2a(
+        name="Private Calculator Agent",
+        handler=calculator_agent.handle,
+        port=8201,  # Internal port only
+        host="0.0.0.0",
+        description="Calculator agent (private)",
+        skills=skills,
+        streaming=False,
 
-    # Execute task
-    message = Message(
-        role=Role.USER,
-        parts=[TextPart(text="Calculate 2 + 2")]
+        # Integration config
+        user_id=f"user:{user_wallet}",
+        aip_endpoint=os.environ.get("AIP_ENDPOINT"),
+        gateway_url=os.environ.get("GATEWAY_URL"),
+        handle="calculator_private",
+        cost_model=cost_model,
+        endpoint_url=None,  # ← POLLING MODE
+
+        auto_register=False,
     )
-    task = await client.send_task(
-        agent_url="http://localhost:8100",
-        message=message
-    )
 
-    # Stream execution
-    async for response in client.stream_task(
-        agent_url="http://localhost:8100",
-        message=message
-    ):
-        if response.message:
-            print(response.message)
+    print("✓ Agent running (internal port 8201)")
+    print("✓ Polling Gateway for tasks...")
+    print("✓ No public endpoint required")
+
+    server.run_sync()
 ```
 
-## Architecture
-
-```
-┌──────────────────────────────────────┐
-│  Your Code (function/class/agent)   │
-└───────────────┬──────────────────────┘
-                │
-                │ expose_as_a2a() / wrap_agent()
-                │
-                ▼
-┌──────────────────────────────────────┐
-│     Agent SDK (This Package)         │
-│  ✓ A2A Protocol Implementation       │
-│  ✓ JSON-RPC 2.0 Server               │
-│  ✓ SSE Streaming                     │
-│  ✓ Agent Card Generation             │
-└───────────────┬──────────────────────┘
-                │
-    ┌───────────┴───────────┐
-    │                       │
-    ▼                       ▼
-┌─────────────┐     ┌──────────────┐
-│  A2A Client │     │ AIP Platform │
-│  (Direct)   │     │ (Registry)   │
-└─────────────┘     └──────────────┘
-```
-
-## API Reference
-
-### Core Functions
-
-```python
-expose_as_a2a(
-    name: str,              # Agent name
-    handler: Callable,      # Your function/handler
-    port: int = 8000,       # Server port
-    description: str = None,
-    skills: List[AgentSkill] = None,
-    streaming: bool = False,
-    user_id: str = None,    # For AIP registration
-    auto_register: bool = True,
-    cost_model: CostModel = None
-) -> A2AServer
-
-wrap_agent(
-    agent: Any,            # Your agent instance
-    name: str,             # Agent name
-    method: str = None,    # Single method to expose
-    methods: List[str] = None  # Multiple methods
-) -> AgentWrapper
-```
-
-### Classes
-
-- `A2AServer` - A2A protocol server
-- `A2AClient` - Client for consuming A2A agents
-- `AgentWrapper` - Wrapper for class-based agents
-- `StreamResponse` - Streaming response wrapper
-
-## Development
+#### Step 5: Run the Agent
 
 ```bash
-# Install in editable mode
-uv pip install -e .
+# Set environment variables (NO public URL needed!)
+export AIP_ENDPOINT="http://api.aip.unibase.com"
+export GATEWAY_URL="http://gateway.aip.unibase.com"
+export MEMBASE_ACCOUNT="0x5ea13664c5ce67753f208540d25b913788aa3daa"  # Sample test account
 
-# With AIP SDK dependency (local development)
-# Edit pyproject.toml:
-[tool.uv.sources]
-unibase-aip-sdk = { path = "../unibase-aip-sdk", editable = true }
+# Run the agent
+python examples/complete/private_agent_full.py
 ```
 
-## Examples
+**Output:**
+```
+Step 1: Register Agent with AIP Platform (Private Mode)
+  ✓ Platform is healthy
+  ✓ Agent registered: agent_abc456
+  ✓ Mode: POLLING (no public endpoint)
 
-See `examples/` directory:
-- `wrap_any_agent.py` - Wrapping functions and classes
-- `streaming_agent.py` - Streaming responses with SSE
-- `a2a_client.py` - Consuming A2A agents
-- `llm_sdk_integrations.py` - OpenAI, Anthropic, Google integrations
-- `agent_message_format.py` - Working with AgentMessage format
-- `agent_registration_direct_mode.py` - AIP platform registration
+Step 2: Start Agent A2A Service (Private Mode)
+  ✓ Agent running (internal port 8201)
+  ✓ Polling Gateway for tasks...
+  ✓ No public endpoint required
+```
 
-## Why Use This SDK?
+---
 
-| Without Agent SDK | With Agent SDK |
-|-------------------|----------------|
-| Implement JSON-RPC server | ✅ Automatic |
-| Create SSE streaming | ✅ Automatic |
-| Generate Agent Card | ✅ Automatic |
-| Handle A2A protocol | ✅ Automatic |
-| Register with AIP | ✅ One parameter |
-| Framework-specific code | ✅ Framework agnostic |
-| Days of development | ✅ Minutes |
+## Reference
 
-## Learn More
+### Environment Variables
 
-- [Unibase Documentation](https://docs.unibase.com)
-- [A2A Protocol Specification](https://docs.google.com/document/d/1pKUa_stglbV7cPLftp7m700dTPz6u7hVNZGEDNjBqRk)
-- [Agent Development Guide](https://docs.unibase.com/agents)
-- [AIP Platform Integration](https://docs.unibase.com/aip)
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `AIP_ENDPOINT` | AIP platform URL | Yes | - |
+| `GATEWAY_URL` | Gateway URL | Yes | - |
+| `AGENT_PUBLIC_URL` | Public endpoint URL | Public agents only | - |
+| `AGENT_HOST` | Bind host | No | `0.0.0.0` |
+| `AGENT_PORT` | Bind port | No | `8200` |
+| `MEMBASE_ACCOUNT` | Wallet address | No | - |
 
-## License
+---
 
-MIT
+**Ready to build your agent?** Start with the [public agent example](complete/public_agent_full.py) or [private agent example](complete/private_agent_full.py)!
