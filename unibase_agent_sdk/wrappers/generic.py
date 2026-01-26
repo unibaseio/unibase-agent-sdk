@@ -245,10 +245,13 @@ def expose_as_a2a(
         handle = name.lower().replace(" ", ".").replace("_", ".")
 
     # Build Agent Card with Google A2A types
+    # Priority for discovery URL: endpoint_url > local host:port
+    discovery_url = endpoint_url or f"http://{host}:{port}"
+
     agent_card = AgentCard(
         name=name,
         description=description,
-        url=f"http://{host}:{port}",
+        url=discovery_url,
         version=version,
         skills=skills,
         capabilities=AgentCapabilities(streaming=streaming),
@@ -307,12 +310,14 @@ class AgentWrapper:
         skill_methods: dict[str, str] = None,
         description: str = None,
         version: str = "1.0.0",
+        endpoint_url: str = None,
     ):
         """Initialize agent wrapper."""
         self.agent = agent
         self.name = name
         self.description = description or f"{name} agent"
         self.version = version
+        self.endpoint_url = endpoint_url
 
         if method and skill_methods:
             raise ValueError("Cannot specify both 'method' and 'skill_methods'")
@@ -414,10 +419,13 @@ class AgentWrapper:
 
     def to_server(self, port: int = 8000, host: str = "0.0.0.0") -> A2AServer:
         """Create an A2AServer for this wrapped agent."""
+        # Priority for discovery URL: endpoint_url > local host:port
+        discovery_url = self.endpoint_url or f"http://{host}:{port}"
+
         agent_card = AgentCard(
             name=self.name,
             description=self.description,
-            url=f"http://{host}:{port}",
+            url=discovery_url,
             version=self.version,
             skills=self._build_skills(),
             capabilities=AgentCapabilities(),

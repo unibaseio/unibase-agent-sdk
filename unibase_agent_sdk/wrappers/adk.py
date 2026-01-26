@@ -202,6 +202,7 @@ class ADKWrapper:
         user_id: str = None,
         aip_endpoint: str = None,
         auto_register: bool = True,
+        endpoint_url: str = None,
     ) -> A2AServer:
         """
         Create an A2A server for this wrapped agent.
@@ -218,10 +219,13 @@ class ADKWrapper:
             A2AServer instance
         """
         # Build agent card
+        # Priority for discovery URL: endpoint_url > local host:port
+        discovery_url = endpoint_url or f"http://{host}:{port}"
+
         agent_card = AgentCard(
             name=self.name,
             description=self.description,
-            url=f"http://{host}:{port}",
+            url=discovery_url,
             version=self.version,
             skills=self.skills,
             capabilities=AgentCapabilities(streaming=True),
@@ -248,6 +252,7 @@ class ADKWrapper:
                     for s in self.skills
                 ],
                 "cost_model": resolved_cost.to_dict() if resolved_cost else None,
+                "endpoint_url": endpoint_url,
             }
 
         return A2AServer(
@@ -282,6 +287,7 @@ def expose_adk_as_a2a(
     user_id: str = None,
     aip_endpoint: str = None,
     auto_register: bool = True,
+    endpoint_url: str = None,
 ) -> A2AServer:
     """
     Expose a Google ADK agent as an A2A service.
@@ -319,4 +325,5 @@ def expose_adk_as_a2a(
         user_id=user_id,
         aip_endpoint=aip_endpoint,
         auto_register=auto_register,
+        endpoint_url=endpoint_url,
     )

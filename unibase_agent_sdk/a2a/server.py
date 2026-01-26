@@ -65,7 +65,21 @@ class A2AServer:
 
     def _serialize_agent_card(self) -> Dict[str, Any]:
         """Serialize agent card to dict using Pydantic."""
-        return self.agent_card.model_dump(by_alias=True, exclude_none=True)
+        card_data = self.agent_card.model_dump(by_alias=True, exclude_none=True)
+
+        # Add endpoint_url if available in registration_config
+        endpoint_url = None
+        if self.registration_config:
+            endpoint_url = self.registration_config.get("endpoint_url")
+            if endpoint_url:
+                card_data["endpoint_url"] = endpoint_url
+                card_data["url"] = endpoint_url
+
+        # Ensure url is set (fallback to host:port if missing and not in push mode)
+        if "url" not in card_data:
+            card_data["url"] = f"http://{self.host}:{self.port}"
+
+        return card_data
 
     def _serialize_task(self, task: Task) -> Dict[str, Any]:
         """Serialize task to dict using Pydantic."""
