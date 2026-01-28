@@ -192,6 +192,7 @@ def expose_as_a2a(
     cost_model: CostModel = None,
     currency: str = "USD",
     endpoint_url: str = None,
+    metadata: Dict[str, Any] = None,
     **kwargs,
 ) -> A2AServer:
     """Expose ANY callable as an A2A-compatible agent service.
@@ -285,6 +286,7 @@ def expose_as_a2a(
             "cost_model": resolved_cost_model.to_dict(),
             "currency": currency,
             "endpoint_url": endpoint_url,
+            "metadata": metadata or {},
         }
 
     # Create and return server
@@ -311,6 +313,7 @@ class AgentWrapper:
         description: str = None,
         version: str = "1.0.0",
         endpoint_url: str = None,
+        metadata: Dict[str, Any] = None,
     ):
         """Initialize agent wrapper."""
         self.agent = agent
@@ -318,6 +321,7 @@ class AgentWrapper:
         self.description = description or f"{name} agent"
         self.version = version
         self.endpoint_url = endpoint_url
+        self.metadata = metadata or {}
 
         if method and skill_methods:
             raise ValueError("Cannot specify both 'method' and 'skill_methods'")
@@ -431,6 +435,7 @@ class AgentWrapper:
             capabilities=AgentCapabilities(),
             default_input_modes=["text/plain", "application/json"],
             default_output_modes=["text/plain", "application/json"],
+            metadata=self.metadata,
         )
 
         return A2AServer(

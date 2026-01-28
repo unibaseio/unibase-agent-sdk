@@ -604,6 +604,7 @@ class A2AServer:
                 skills=skills,
                 cost_model=cost_model,
                 currency=config.get("currency", "USD"),
+                metadata=config.get("metadata", {}),
             )
 
             # Register with platform
