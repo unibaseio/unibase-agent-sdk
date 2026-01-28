@@ -1,5 +1,6 @@
 """A2A Protocol Server."""
 
+from ag_ui.core import UserMessage
 from typing import Optional, Callable, AsyncIterator, Dict, Any
 from contextlib import asynccontextmanager
 import json
@@ -218,6 +219,71 @@ class A2AServer:
                     "jsonrpc": "2.0",
                     "id": None,
                     "error": {"code": A2AErrorCode.INTERNAL_ERROR, "message": str(e)}
+                }
+                return JSONResponse(content=error_response, status_code=500)
+
+        # AG-UI Streaming endpoint (Raw SSE support)
+        @app.post("/a2a/stream-agui")
+        async def stream_agui_endpoint(request: Request):
+            try:
+                body = await request.json()
+                user_msg = UserMessage.model_validate(body)
+                # Manually convert ag_ui UserMessage to SDK Message
+                # ag_ui UserMessage: id, role, content (list or str), name, etc.
+                # SDK Message: messageId, role, parts, metadata, etc.
+                
+                # Check for content type
+                parts = []
+                if isinstance(user_msg.content, str):
+                    parts.append({"text": user_msg.content})
+                elif isinstance(user_msg.content, list):
+                     for item in user_msg.content:
+                         # item is ContentItem (TextInputContent, BinaryInputContent, etc.)
+                         # dumping to dict to get properties
+                         item_dict = item.model_dump(by_alias=True)
+                         # Simple mapping for now - adjust based on actual SDK Message structure
+                         if "text" in item_dict:
+                             parts.append({"text": item_dict["text"]})
+                         # TODO: Handle binary content if SDK Message supports it
+                
+                msg_data = {
+                    "messageId": user_msg.id,
+                    "role": user_msg.role,
+                    "parts": parts,
+                    "metadata": {} # Add metadata if available
+                }
+                
+                msg = self._parse_message(msg_data)
+                
+                async def event_generator():
+                    task = Task(
+                        id=uuid.uuid4().hex,
+                        context_id=uuid.uuid4().hex,
+                        status=TaskStatus(state=TaskState.working),
+                        history=[msg],
+                    )
+                    self._tasks[task.id] = task
+                    async for response in self.task_handler(task, msg):
+                        if response.raw_content:
+                             yield response.raw_content
+                        else:
+                             # If not raw content, try to get event
+                             event = response.get_event()
+                             if event:
+                                 # For simplicity, just json dump if it happens to be not raw
+                                 # But for ag_ui stream, we expect raw content mostly
+                                 yield f"data: {json.dumps(event.model_dump(by_alias=True))}\n\n"
+                    
+                return StreamingResponse(
+                    event_generator(),
+                    media_type="text/event-stream"
+                )
+
+            except Exception as e:
+                logger.exception(f"Error in stream-agui endpoint: {e}")
+                error_response = {
+                    "code": A2AErrorCode.INTERNAL_ERROR, 
+                    "message": str(e)
                 }
                 return JSONResponse(content=error_response, status_code=500)
 

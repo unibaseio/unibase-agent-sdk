@@ -28,11 +28,13 @@ class StreamResponse:
         message: Optional[Message] = None,
         status_update: Optional[TaskStatusUpdateEvent] = None,
         artifact_update: Optional[TaskArtifactUpdateEvent] = None,
+        raw_content: Optional[str] = None,
     ):
         self.task = task
         self.message = message
         self.status_update = status_update
         self.artifact_update = artifact_update
+        self.raw_content = raw_content
 
     def get_event(self) -> Union[Task, Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, None]:
         """Get the underlying event object."""

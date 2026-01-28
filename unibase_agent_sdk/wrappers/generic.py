@@ -126,6 +126,7 @@ StreamHandler = Union[SyncStreamHandler, AsyncStreamHandler]
 def _create_task_handler(
     handler: Handler,
     streaming: bool = False,
+    raw_response: bool = False,
 ) -> Callable[[Task, Message], AsyncIterator[StreamResponse]]:
     """Create an A2A task handler from a simple function.
 
@@ -136,6 +137,10 @@ def _create_task_handler(
     is_async = asyncio.iscoroutinefunction(handler)
     is_async_gen = inspect.isasyncgenfunction(handler)
 
+    # Check for user_id parameter in handler
+    sig = inspect.signature(handler)
+    needs_user_id = "user_id" in sig.parameters
+
     async def task_handler(task: Task, message: Message) -> AsyncIterator[StreamResponse]:
         # Extract text directly using A2A SDK utility
         input_text = get_message_text(message)
@@ -143,31 +148,59 @@ def _create_task_handler(
         # Log for debugging
         logger.debug(f"Processing request: {input_text[:100] if input_text else 'empty'}")
 
+        # Prepare arguments
+        args = [input_text]
+        if needs_user_id:
+            # Extract user_id from message metadata or context
+            # A2A protocol doesn't have a standard user_id field in Message,
+            # but we can try to extract from metadata or caller info
+            user_id = "anonymous"
+            if message.metadata:
+                user_id = message.metadata.get("user_id", user_id)
+            elif hasattr(message, "context") and message.context:
+                 # Try to use caller as user_id if available
+                 if hasattr(message.context, "caller") and message.context.caller:
+                     user_id = message.context.caller
+            
+            args.append(user_id)
+
         if streaming:
             # Streaming handler
             if is_async_gen:
-                async for chunk in handler(input_text):
-                    response_msg = create_text_message_object(Role.agent, chunk)
-                    yield StreamResponse(message=response_msg)
+                async for chunk in handler(*args):
+                    if raw_response:
+                         yield StreamResponse(raw_content=chunk)
+                    else:
+                        response_msg = create_text_message_object(Role.agent, chunk)
+                        yield StreamResponse(message=response_msg)
             elif is_async:
-                result = await handler(input_text)
+                result = await handler(*args)
                 for chunk in result:
-                     response_msg = create_text_message_object(Role.agent, chunk)
-                     yield StreamResponse(message=response_msg)
+                     if raw_response:
+                         yield StreamResponse(raw_content=chunk)
+                     else:
+                         response_msg = create_text_message_object(Role.agent, chunk)
+                         yield StreamResponse(message=response_msg)
             else:
-                for chunk in handler(input_text):
-                    response_msg = create_text_message_object(Role.agent, chunk)
-                    yield StreamResponse(message=response_msg)
+                for chunk in handler(*args):
+                    if raw_response:
+                        yield StreamResponse(raw_content=chunk)
+                    else:
+                        response_msg = create_text_message_object(Role.agent, chunk)
+                        yield StreamResponse(message=response_msg)
         else:
             # Non-streaming handler
             if is_async:
-                result = await handler(input_text)
+                result = await handler(*args)
             else:
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, handler, input_text)
+                result = await loop.run_in_executor(None, handler, *args)
 
-            response_msg = create_text_message_object(Role.agent, str(result))
-            yield StreamResponse(message=response_msg)
+            if raw_response:
+                yield StreamResponse(raw_content=str(result))
+            else:
+                response_msg = create_text_message_object(Role.agent, str(result))
+                yield StreamResponse(message=response_msg)
 
     return task_handler
 
@@ -181,6 +214,7 @@ def expose_as_a2a(
     description: str = None,
     skills: List[AgentSkill] = None,
     streaming: bool = False,
+    raw_response: bool = False, 
     version: str = "1.0.0",
     # Account integration
     user_id: str = None,
@@ -205,6 +239,7 @@ def expose_as_a2a(
         description: Agent description
         skills: List of AgentSkill definitions
         streaming: Enable streaming responses
+        raw_response: If True, handler output is sent directly as SSE data without JSON-RPC wrapping
         version: Agent version string
         user_id: AIP platform user ID for registration
         aip_endpoint: AIP platform endpoint URL
@@ -262,7 +297,7 @@ def expose_as_a2a(
     )
 
     # Create task handler
-    task_handler = _create_task_handler(handler, streaming=streaming)
+    task_handler = _create_task_handler(handler, streaming=streaming, raw_response=raw_response)
 
     # Resolve account integration settings
     resolved_user_id = user_id or os.getenv("AIP_USER_ID")
