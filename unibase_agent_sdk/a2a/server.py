@@ -223,7 +223,7 @@ class A2AServer:
                 return JSONResponse(content=error_response, status_code=500)
 
         # AG-UI Streaming endpoint (Raw SSE support)
-        @app.post("/a2a/stream-agui")
+        @app.post("/agui/stream")
         async def stream_agui_endpoint(request: Request):
             try:
                 body = await request.json()
