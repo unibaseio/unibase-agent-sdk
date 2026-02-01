@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import json
 import asyncio
 import uuid
+from datetime import datetime
 
 from ..core.exceptions import TaskExecutionError, InitializationError
 from ..utils.logger import get_logger
@@ -297,6 +298,47 @@ class A2AServer:
         async def healthz_check():
             return {"status": "healthy", "agent": self.agent_card.name}
 
+        # Chat history endpoint
+        @app.get("/conversations")
+        async def get_conversations(
+            limit: int = 20,
+            offset: int = 0
+        ):
+            """Get recent chat history."""
+            # Filter tasks that have last_updated in metadata
+            tasks_with_time = []
+            for task in self._tasks.values():
+                if task.metadata and "last_updated" in task.metadata:
+                    tasks_with_time.append(task)
+            
+            # Sort by last_updated descending
+            try:
+                tasks_with_time.sort(
+                    key=lambda t: t.metadata["last_updated"],
+                    reverse=True
+                )
+            except Exception:
+                # Fallback if sorting fails (should't happen if properly formatted)
+                pass
+                
+            # Paginate
+            paginated_tasks = tasks_with_time[offset : offset + limit]
+            
+            return {
+                "data": [self._serialize_task(t) for t in paginated_tasks],
+                "total": len(tasks_with_time),
+                "limit": limit,
+                "offset": offset
+            }
+
+        @app.get("/conversations/{conversation_id}")
+        async def get_conversation(conversation_id: str):
+            """Get specific conversation details."""
+            if conversation_id not in self._tasks:
+                return JSONResponse(status_code=404, content={"error": "Conversation not found"})
+            
+            return self._serialize_task(self._tasks[conversation_id])
+
         self._app = app
         return app
 
@@ -382,13 +424,17 @@ class A2AServer:
         self._tasks[task_id] = task
 
         # Update task status to working
+        # Add last_updated to metadata
+        task_metadata = task.metadata or {}
+        task_metadata["last_updated"] = datetime.utcnow().isoformat()
+
         task = Task(
             id=task.id,
             context_id=task.context_id,
             status=TaskStatus(state=TaskState.working),
             history=task.history,
             artifacts=task.artifacts,
-            metadata=task.metadata,
+            metadata=task_metadata,
         )
         self._tasks[task_id] = task
 
@@ -492,13 +538,17 @@ class A2AServer:
         self._tasks[task_id] = task
 
         # Update task status to working
+        # Add last_updated to metadata
+        task_metadata = task.metadata or {}
+        task_metadata["last_updated"] = datetime.utcnow().isoformat()
+
         task = Task(
             id=task.id,
             context_id=task.context_id,
             status=TaskStatus(state=TaskState.working),
             history=task.history,
             artifacts=task.artifacts,
-            metadata=task.metadata,
+            metadata=task_metadata,
         )
         self._tasks[task_id] = task
 
