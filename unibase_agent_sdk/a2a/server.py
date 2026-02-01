@@ -247,8 +247,10 @@ class A2AServer:
                              parts.append({"text": item_dict["text"]})
                          # TODO: Handle binary content if SDK Message supports it
                 
+                conversation_id = body.get("id")
+
                 msg_data = {
-                    "messageId": user_msg.id,
+                    "messageId": uuid.uuid4().hex,
                     "role": user_msg.role,
                     "parts": parts,
                     "metadata": {} # Add metadata if available
@@ -257,14 +259,54 @@ class A2AServer:
                 msg = self._parse_message(msg_data)
                 
                 async def event_generator():
-                    task = Task(
-                        id=uuid.uuid4().hex,
-                        context_id=uuid.uuid4().hex,
-                        status=TaskStatus(state=TaskState.working),
-                        history=[msg],
-                    )
+                    # Determine task (conversation) context
+                    task_id = conversation_id or uuid.uuid4().hex
+                    
+                    if task_id in self._tasks:
+                        # Continue existing conversation
+                        existing_task = self._tasks[task_id]
+                        task = Task(
+                            id=existing_task.id,
+                            context_id=existing_task.context_id,
+                            status=TaskStatus(state=TaskState.working),
+                            history=list(existing_task.history or []) + [msg],
+                            artifacts=existing_task.artifacts,
+                            metadata=existing_task.metadata,
+                        )
+                        # Build history for context (append new message)
+                    else:
+                        # New conversation
+                        task = Task(
+                            id=task_id,
+                            context_id=uuid.uuid4().hex,
+                            status=TaskStatus(state=TaskState.working),
+                            history=[msg],
+                        )
+
+                    # Update/Save task
                     self._tasks[task.id] = task
+
+                    history = list(task.history or [])
+                    artifacts = list(task.artifacts or [])
+
                     async for response in self.task_handler(task, msg):
+                        if response.message:
+                             history.append(response.message)
+                        if response.status_update:
+                             task = Task(
+                                 id=task.id,
+                                 context_id=task.context_id,
+                                 status=response.status_update.status,
+                                 history=history,
+                                 artifacts=artifacts if artifacts else None,
+                                 metadata=task.metadata,
+                             )
+                        if response.artifact_update:
+                             artifacts.append(response.artifact_update.artifact)
+                        
+                        # Update task in storage
+                        self._tasks[task.id] = task
+
                         if response.raw_content:
                              yield response.raw_content
                         else:
@@ -274,6 +316,21 @@ class A2AServer:
                                  # For simplicity, just json dump if it happens to be not raw
                                  # But for ag_ui stream, we expect raw content mostly
                                  yield f"data: {json.dumps(event.model_dump(by_alias=True))}\n\n"
+                    
+                    # Finalize task state
+                    final_state = task.status.state
+                    if final_state not in [TaskState.completed, TaskState.failed, TaskState.canceled]:
+                        final_state = TaskState.completed
+                    
+                    task = Task(
+                        id=task.id,
+                        context_id=task.context_id,
+                        status=TaskStatus(state=final_state),
+                        history=history,
+                        artifacts=artifacts if artifacts else None,
+                        metadata=task.metadata,
+                    )
+                    self._tasks[task.id] = task
                     
                 return StreamingResponse(
                     event_generator(),
