@@ -321,9 +321,27 @@ class A2AServer:
                                      try:
                                          if content.startswith('"') and content.endswith('"'):
                                              content = json.loads(content)
+                                         elif content.startswith("{") and content.endswith("}"):
+                                             # Try to parse JSON object (e.g. OpenAI format or custom A2A format)
+                                             try:
+                                                 json_data = json.loads(content)
+                                                 if isinstance(json_data, dict):
+                                                     # Extract content from common formats
+                                                     if "delta" in json_data:
+                                                         content = json_data["delta"]
+                                                     elif "text" in json_data:
+                                                         content = json_data["text"]
+                                                     elif "choices" in json_data and isinstance(json_data["choices"], list):
+                                                         # OpenAI format
+                                                         delta = json_data["choices"][0].get("delta", {})
+                                                         if "content" in delta:
+                                                             content = delta["content"]
+                                             except:
+                                                  pass
                                      except:
                                          pass
-                                     accumulated_content.append(content)
+                                     if isinstance(content, str):
+                                         accumulated_content.append(content)
                                  elif line.startswith("0:"):
                                       # Vercel AI SDK format: 0:"text"\n
                                       content = line[2:].strip()
