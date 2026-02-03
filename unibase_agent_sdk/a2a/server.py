@@ -289,6 +289,9 @@ class A2AServer:
                     history = list(task.history or [])
                     artifacts = list(task.artifacts or [])
 
+                    accumulated_content = []
+                    initial_history_len = len(history)
+
                     async for response in self.task_handler(task, msg):
                         if response.message:
                              history.append(response.message)
@@ -308,6 +311,31 @@ class A2AServer:
                         self._tasks[task.id] = task
 
                         if response.raw_content:
+                             # Try to extract text content from raw SSE for history (best effort)
+                             try:
+                                 # Common format: data: "text"\n\n or data: "text"
+                                 line = response.raw_content.strip()
+                                 if line.startswith("data:"):
+                                     content = line[5:].strip()
+                                     # Handle JSON string if present
+                                     try:
+                                         if content.startswith('"') and content.endswith('"'):
+                                             content = json.loads(content)
+                                     except:
+                                         pass
+                                     accumulated_content.append(content)
+                                 elif line.startswith("0:"):
+                                      # Vercel AI SDK format: 0:"text"\n
+                                      content = line[2:].strip()
+                                      if content.startswith('"') and content.endswith('"'):
+                                            try:
+                                                content = json.loads(content)
+                                                accumulated_content.append(content)
+                                            except:
+                                                pass
+                             except Exception:
+                                 pass
+
                              yield response.raw_content
                         else:
                              # If not raw content, try to get event
@@ -316,6 +344,14 @@ class A2AServer:
                                  # For simplicity, just json dump if it happens to be not raw
                                  # But for ag_ui stream, we expect raw content mostly
                                  yield f"data: {json.dumps(event.model_dump(by_alias=True))}\n\n"
+                    
+                    # If we accumulated content but no message was added to history, synthesize one
+                    if accumulated_content and len(history) == initial_history_len:
+                        full_text = "".join(accumulated_content)
+                        if full_text:
+                            # Create agent message using imported helper
+                            agent_msg = create_text_message_object(Role.agent, full_text)
+                            history.append(agent_msg)
                     
                     # Finalize task state
                     final_state = task.status.state
