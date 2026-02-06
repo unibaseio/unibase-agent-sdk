@@ -227,6 +227,7 @@ def expose_as_a2a(
     currency: str = "USD",
     endpoint_url: str = None,
     metadata: Dict[str, Any] = None,
+    chain_id: int = 97,
     **kwargs,
 ) -> A2AServer:
     """Expose ANY callable as an A2A-compatible agent service.
@@ -247,6 +248,7 @@ def expose_as_a2a(
         auto_register: Whether to auto-register with AIP platform
         cost_model: Pricing model (use CostModel(base_call_fee=0.05) for $0.05/call)
         currency: Currency for pricing (default: USD)
+        chain_id: Target blockchain ID for registration (default: 97)
         **kwargs: Additional arguments passed to AgentCard
 
     Returns:
@@ -322,6 +324,7 @@ def expose_as_a2a(
             "currency": currency,
             "endpoint_url": endpoint_url,
             "metadata": metadata or {},
+            "chain_id": chain_id,
         }
 
     # Create and return server
