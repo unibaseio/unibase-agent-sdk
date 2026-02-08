@@ -276,7 +276,7 @@ def start_agent_service(user_wallet: str, agent_id: str):
 
     print(f"\nStarting service...")
     print(f"  Agent will run on http://{agent_host}:{agent_port}")
-    print(f"  Agent Card: http://{agent_host}:{agent_port}/.well-known/agent.json")
+    print(f"  Agent Card: http://{agent_host}:{agent_port}/.well-known/agent-card.json")
     print(f"  All calls will be routed via Gateway")
     print(f"\n{'='*70}")
     print("Agent is running! Waiting for requests...")

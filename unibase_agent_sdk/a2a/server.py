@@ -106,7 +106,7 @@ class A2AServer:
         @asynccontextmanager
         async def lifespan(app):
             logger.info(f"A2A Server starting at http://{self.host}:{self.port}")
-            logger.info(f"Agent Card: http://{self.host}:{self.port}/.well-known/agent.json")
+            logger.info(f"Agent Card: http://{self.host}:{self.port}/.well-known/agent-card.json")
 
             # Register with AIP platform if configured and auto_register is True
             if self.registration_config and self.auto_register:
@@ -155,7 +155,7 @@ class A2AServer:
         )
 
         # Agent Card endpoint
-        @app.get("/.well-known/agent.json")
+        @app.get("/.well-known/agent-card.json")
         async def get_agent_card():
             return JSONResponse(content=self._serialize_agent_card())
 

@@ -118,7 +118,7 @@ class A2AClient:
 
         try:
             response = await self.http_client.get(
-                f"{base_url}/.well-known/agent.json",
+                f"{base_url}/.well-known/agent-card.json",
                 headers=self._headers
             )
             response.raise_for_status()
